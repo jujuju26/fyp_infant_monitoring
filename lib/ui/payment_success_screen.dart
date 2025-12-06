@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'bookings_screen.dart';
+import 'parent_home_screen.dart';   // 👈 change import: use ParentHomeScreen
 
 class PaymentSuccessScreen extends StatelessWidget {
   const PaymentSuccessScreen({super.key});
@@ -16,8 +16,7 @@ class PaymentSuccessScreen extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -73,7 +72,14 @@ class PaymentSuccessScreen extends StatelessWidget {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.pop(context, 3);
+                    // 👇 Clear stack and go back to ParentHome on Package tab
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ParentHomeScreen(initialIndex: 3),
+                      ),
+                          (route) => false,
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFADADD),
@@ -88,7 +94,7 @@ class PaymentSuccessScreen extends StatelessWidget {
                     shadowColor: Colors.black26,
                   ),
                   child: const Text(
-                    "Back to Booking",
+                    "Back to Packages",
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w600,

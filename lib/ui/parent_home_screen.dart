@@ -6,15 +6,18 @@ import 'report_screen.dart';
 import 'confinement_package_screen.dart';
 
 class ParentHomeScreen extends StatefulWidget {
-  const ParentHomeScreen({super.key});
+  final int initialIndex;   // 👈 NEW
+
+  const ParentHomeScreen({super.key, this.initialIndex = 0});
 
   @override
   State<ParentHomeScreen> createState() => _ParentHomeScreenState();
 }
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
 
+  // pages can stay const like before
   final List<Widget> _pages = const [
     InfantMonitoringHome(),
     NotificationScreen(),
@@ -22,6 +25,12 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     ConfinementPackageScreen(),
     ParentProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialIndex;   // 👈 start from tab passed in
+  }
 
   void _onItemTapped(int index) => setState(() => _selectedIndex = index);
 
@@ -59,4 +68,3 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     );
   }
 }
-
