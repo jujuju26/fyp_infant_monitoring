@@ -1,0 +1,67 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-southeast1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "lullacare",
+          "appId": "1:490492139041:android:35f01f8995dc216fe53560",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "lullacare",
+          "configurations": {
+            "android": "1:490492139041:android:35f01f8995dc216fe53560",
+            "ios": "1:490492139041:ios:b6e04ecaafdc1b94e53560",
+            "macos": "1:490492139041:ios:b6e04ecaafdc1b94e53560",
+            "web": "1:490492139041:web:d2a20926304d0f0ce53560",
+            "windows": "1:490492139041:web:663b21ace2e76d73e53560"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}
+
+

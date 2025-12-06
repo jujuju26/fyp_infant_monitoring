@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "490492139041",
+    "project_id": "lullacare",
+    "storage_bucket": "lullacare.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:490492139041:android:35f01f8995dc216fe53560",
+        "android_client_info": {
+          "package_name": "fyp.julina.fyp_infant_monitoring"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBycOufH_YfL00zLwV_simH8hzuKc2Ks3M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
