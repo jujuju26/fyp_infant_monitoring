@@ -25,9 +25,11 @@ class _StaffNotificationSettingsScreenState
   bool popupEnabled = true;
   double volume = 0.7;
 
-  String cryingSound = "baby_cry_alert.wav";
+  /// renamed: supports cry + danger alerts
+  String alertSound = "baby_cry_alert.wav";
 
-  final List<String> cryingSounds = [
+  /// future: you can add more sounds here later
+  final List<String> alertSounds = [
     "baby_cry_alert.wav",
     "default_notification.wav",
   ];
@@ -46,12 +48,12 @@ class _StaffNotificationSettingsScreenState
         NotificationChannel(
           channelKey: 'baby_alert_channel',
           channelName: 'Baby Alerts',
-          channelDescription: 'Alerts for baby crying events',
+          channelDescription: 'Cry alerts + danger alerts (face covered & rollover)',
           defaultColor: Colors.pinkAccent,
           importance: NotificationImportance.Max,
           defaultRingtoneType: DefaultRingtoneType.Notification,
-          playSound: false,
-          enableVibration: false,
+          playSound: false, // we play sound manually using audioplayers
+          enableVibration: false, // vibration handled manually
         ),
       ],
     );
@@ -77,7 +79,7 @@ class _StaffNotificationSettingsScreenState
         vibrateEnabled = data['vibrateEnabled'] ?? true;
         popupEnabled = data['popupEnabled'] ?? true;
         volume = (data['volume'] ?? 0.7).toDouble();
-        cryingSound = data['cryingSound'] ?? "baby_cry_alert.wav";
+        alertSound = data['cryingSound'] ?? "baby_cry_alert.wav";
       });
       _player.setVolume(volume);
     }
@@ -94,7 +96,7 @@ class _StaffNotificationSettingsScreenState
       'vibrateEnabled': vibrateEnabled,
       'popupEnabled': popupEnabled,
       'volume': volume,
-      'cryingSound': cryingSound,
+      'cryingSound': alertSound,
     }, SetOptions(merge: true));
   }
 
@@ -138,7 +140,7 @@ class _StaffNotificationSettingsScreenState
           children: [
             _sectionTitle("General Settings"),
             _switchTile(
-              title: "Enable Notification Sound",
+              title: "Enable Alert Sound",
               value: soundEnabled,
               onChanged: (v) {
                 setState(() => soundEnabled = v);
@@ -146,7 +148,7 @@ class _StaffNotificationSettingsScreenState
               },
             ),
             _switchTile(
-              title: "Vibrate",
+              title: "Vibrate on Alert",
               value: vibrateEnabled,
               onChanged: (v) {
                 setState(() => vibrateEnabled = v);
@@ -154,7 +156,7 @@ class _StaffNotificationSettingsScreenState
               },
             ),
             _switchTile(
-              title: "Show Popup Alert",
+              title: "Show Popup Notification",
               value: popupEnabled,
               onChanged: (v) {
                 setState(() => popupEnabled = v);
@@ -175,8 +177,8 @@ class _StaffNotificationSettingsScreenState
                   Expanded(
                     child: Slider(
                       value: volume,
-                      min: 0.0,
-                      max: 1.0,
+                      min: 0,
+                      max: 1,
                       onChanged: (v) {
                         setState(() => volume = v);
                         _player.setVolume(v);
@@ -192,17 +194,27 @@ class _StaffNotificationSettingsScreenState
 
             const SizedBox(height: 30),
 
-            _sectionTitle("Crying Sound"),
+            _sectionTitle("Alert Sound (Cry + Danger)"),
             _soundPicker(
-              currentSound: cryingSound,
-              soundList: cryingSounds,
+              currentSound: alertSound,
+              soundList: alertSounds,
               onChanged: (v) {
-                setState(() => cryingSound = v!);
+                setState(() => alertSound = v!);
                 _saveSettings();
               },
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            const Text(
+              "This sound will play for ALL alerts:\n• Crying alerts\n• Face covered danger\n• Rollover danger",
+              style: TextStyle(
+                fontFamily: "Poppins",
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+            ),
+
+            const SizedBox(height: 30),
           ],
         ),
       ),
@@ -276,10 +288,7 @@ class _StaffNotificationSettingsScreenState
             items: soundList.map((s) {
               return DropdownMenuItem(
                 value: s,
-                child: Text(
-                  s,
-                  style: const TextStyle(fontFamily: "Poppins"),
-                ),
+                child: Text(s, style: const TextStyle(fontFamily: "Poppins")),
               );
             }).toList(),
             onChanged: onChanged,

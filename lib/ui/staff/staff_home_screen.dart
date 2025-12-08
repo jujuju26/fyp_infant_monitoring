@@ -1,25 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../logout_success_screen.dart';
 import 'staff_add_infant_screen.dart';
 import 'staff_edit_infant_screen.dart';
 import 'staff_notification_screen.dart';
+import 'staff_infant_monitor_screen.dart'; // <-- NEW
 
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
 
   @override
-  State<StaffHomeScreen> createState() => _StaffHomeScreen();
+  State<StaffHomeScreen> createState() => _StaffHomeScreenState();
 }
 
-class _StaffHomeScreen extends State<StaffHomeScreen> {
+class _StaffHomeScreenState extends State<StaffHomeScreen> {
   String? selectedInfantId;
   Map<String, dynamic>? selectedInfantData;
 
+  static const accent = Color(0xFFC2868B);
+  static const pinkSoft = Color(0xFFFADADD);
+
   String formatDate(dynamic value) {
     if (value is Timestamp) {
-      final DateTime d = value.toDate();
+      final d = value.toDate();
       return "${d.day}/${d.month}/${d.year}";
     }
     return "-";
@@ -27,119 +32,177 @@ class _StaffHomeScreen extends State<StaffHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFC2868B);
-    const pinkSoft = Color(0xFFFADADD);
-
-    final String staffUid = FirebaseAuth.instance.currentUser!.uid;
+    final staffUid = FirebaseAuth.instance.currentUser!.uid;
 
     return Scaffold(
       backgroundColor: Colors.white,
+
+      // APP BAR
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: accent),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        title: Image.asset('assets/images/logo2.png', height: 40),
-        centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: accent),
+        title: Column(
+          children: [
+            Image.asset('assets/images/logo2.png', height: 40),
+            const SizedBox(height: 2),
+            const Text(
+              "Infant Monitoring",
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 13,
+                color: accent,
+              ),
+            )
+          ],
+        ),
       ),
 
-      drawer: _AppDrawer(
+      // DRAWER
+      drawer: _StaffDrawer(
         selectedInfantId: selectedInfantId,
         selectedInfantData: selectedInfantData,
       ),
 
+      // INFANT LIST
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('staff')
             .doc(staffUid)
             .collection('infants')
+            .orderBy("name", descending: false)
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: CircularProgressIndicator(color: accent),
+            );
           }
 
           final infants = snapshot.data!.docs;
+
           if (infants.isEmpty) {
             return const Center(
               child: Text(
-                'No infants added yet',
+                'No infants assigned yet',
                 style: TextStyle(fontFamily: 'Poppins'),
               ),
             );
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             itemCount: infants.length,
             itemBuilder: (context, i) {
-              final data = infants[i].data() as Map<String, dynamic>;
-              final infantId = infants[i].id;
+              final doc = infants[i];
+              final data = doc.data() as Map<String, dynamic>;
+              final infantId = doc.id;
 
-              return Card(
-                color: selectedInfantId == infantId ? pinkSoft.withOpacity(0.4) : Colors.white,
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: selectedInfantId == infantId
-                      ? BorderSide(color: accent, width: 1.5)
-                      : BorderSide.none,
+              final bool isSelected = selectedInfantId == infantId;
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: isSelected ? pinkSoft.withOpacity(0.45) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected ? accent : Colors.grey.shade300,
+                    width: isSelected ? 1.6 : 0.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12.withOpacity(0.05),
+                      offset: const Offset(0, 3),
+                      blurRadius: 6,
+                    )
+                  ],
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.all(12),
+                  contentPadding: const EdgeInsets.all(16),
 
-                  // When tapping card → select infant
+                  // 👉 TAP TO OPEN LIVE MONITOR
                   onTap: () {
                     setState(() {
                       selectedInfantId = infantId;
                       selectedInfantData = data;
                     });
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("${data['name']} selected"),
-                        duration: Duration(seconds: 1),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StaffInfantMonitorScreen(
+                          infantId: infantId,
+                          infantData: data,
+                        ),
                       ),
                     );
                   },
 
+                  // LEADING AVATAR
                   leading: CircleAvatar(
+                    radius: 26,
                     backgroundColor: pinkSoft,
                     child: Text(
-                      (data['name'] ?? 'I')[0].toUpperCase(),
+                      (data["name"] ?? "I")[0].toUpperCase(),
                       style: const TextStyle(
-                        color: accent,
                         fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
+                        color: accent,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
 
+                  // MAIN INFO
                   title: Text(
-                    data['name'] ?? 'Unnamed Infant',
+                    data["name"] ?? "Unnamed Infant",
                     style: const TextStyle(
                       fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
                     ),
                   ),
 
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Gender: ${data['gender'] ?? '-'}",
-                          style: const TextStyle(fontFamily: 'Poppins')),
-                      Text("Birthdate: ${formatDate(data['birthDate'])}",
-                          style: const TextStyle(fontFamily: 'Poppins')),
-                      Text("Height: ${data['height'] ?? '-'} cm",
-                          style: const TextStyle(fontFamily: 'Poppins')),
-                      Text("Weight: ${data['weight'] ?? '-'} kg",
-                          style: const TextStyle(fontFamily: 'Poppins')),
-                    ],
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Gender: ${data['gender'] ?? '-'}",
+                            style: const TextStyle(fontFamily: 'Poppins')),
+                        Text("Birthdate: ${formatDate(data['birthDate'])}",
+                            style: const TextStyle(fontFamily: 'Poppins')),
+                        Text("Height: ${data['height'] ?? '-'} cm",
+                            style: const TextStyle(fontFamily: 'Poppins')),
+                        Text("Weight: ${data['weight'] ?? '-'} kg",
+                            style: const TextStyle(fontFamily: 'Poppins')),
+                      ],
+                    ),
+                  ),
+
+                  // QUICK NOTIF BUTTON (per infant)
+                  trailing: IconButton(
+                    icon:
+                    const Icon(Icons.notifications_active, color: accent),
+                    iconSize: 28,
+                    onPressed: () {
+                      setState(() {
+                        selectedInfantId = infantId;
+                        selectedInfantData = data;
+                      });
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StaffNotificationScreen(
+                            infantId: infantId,
+                            infantName: data["name"] ?? "Infant",
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               );
@@ -148,6 +211,7 @@ class _StaffHomeScreen extends State<StaffHomeScreen> {
         },
       ),
 
+      // ADD INFANT BUTTON
       floatingActionButton: FloatingActionButton(
         backgroundColor: accent,
         onPressed: () {
@@ -162,20 +226,26 @@ class _StaffHomeScreen extends State<StaffHomeScreen> {
   }
 }
 
-class _AppDrawer extends StatelessWidget {
+//
+// ───────────────────────────────────────────────────────────────
+//   DRAWER
+// ───────────────────────────────────────────────────────────────
+//
+
+class _StaffDrawer extends StatelessWidget {
   final String? selectedInfantId;
   final Map<String, dynamic>? selectedInfantData;
 
-  const _AppDrawer({
+  const _StaffDrawer({
     super.key,
     required this.selectedInfantId,
     required this.selectedInfantData,
   });
 
+  static const accent = Color(0xFFC2868B);
+
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFC2868B);
-
     return Drawer(
       backgroundColor: Colors.white,
       child: ListView(
@@ -201,15 +271,18 @@ class _AppDrawer extends StatelessWidget {
             ),
           ),
 
+          // EDIT INFANT
           ListTile(
             leading: const Icon(Icons.edit, color: accent),
-            title: const Text('Edit Infant Details',
-                style: TextStyle(fontFamily: 'Poppins')),
+            title: const Text(
+              'Edit Infant Details',
+              style: TextStyle(fontFamily: 'Poppins'),
+            ),
             onTap: () {
               if (selectedInfantId == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text("Please tap an infant first to edit."),
+                    content: Text("Please tap an infant first."),
                   ),
                 );
                 return;
@@ -227,34 +300,56 @@ class _AppDrawer extends StatelessWidget {
             },
           ),
 
+          // ADD INFANT
           ListTile(
             leading: const Icon(Icons.add_circle_outline, color: accent),
-            title: const Text('Add Infant',
-                style: TextStyle(fontFamily: 'Poppins')),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const StaffAddInfantScreen()),
-              );
-            },
-          ),
-
-          ListTile(
-            leading: const Icon(Icons.notifications_active_outlined, color: accent),
             title: const Text(
-              'Notifications',
+              'Add Infant',
               style: TextStyle(fontFamily: 'Poppins'),
             ),
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const StaffNotificationScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const StaffAddInfantScreen()),
               );
+            },
+          ),
+
+          // ALL NOTIFICATIONS (for all infants – mode C)
+          ListTile(
+            leading: const Icon(Icons.notifications_active_outlined,
+                color: accent),
+            title: const Text(
+              'Notifications',
+              style: TextStyle(fontFamily: 'Poppins'),
+            ),
+            onTap: () {
+              if (selectedInfantId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Tip: tap an infant first,\n"
+                        "then use the bell icon for that infant.\n"
+                        "This menu can later be wired to an 'All infants' view."),
+                  ),
+                );
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StaffNotificationScreen(
+                      infantId: selectedInfantId!,
+                      infantName: selectedInfantData?["name"] ?? "Infant",
+                    ),
+                  ),
+                );
+              }
             },
           ),
 
           const Divider(),
 
+          // LOGOUT
           ListTile(
             leading: const Icon(Icons.logout, color: accent),
             title: const Text(
@@ -265,7 +360,8 @@ class _AppDrawer extends StatelessWidget {
               await FirebaseAuth.instance.signOut();
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => const LogoutSuccessScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const LogoutSuccessScreen()),
                     (route) => false,
               );
             },
