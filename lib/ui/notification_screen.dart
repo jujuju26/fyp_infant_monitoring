@@ -23,6 +23,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   static const accent = Color(0xFFC2868B);
   static const pinkSoft = Color(0xFFFADADD);
 
+  /// TODO: later you will pass this from InfantMonitoring screen
   String infantId = "NEa7O0FMT00FKM2Rew6w";
 
   // SETTINGS
@@ -34,7 +35,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   // Detect new document
   String? lastSeenDocId;
-
   StreamSubscription? detectionStream;
 
   @override
@@ -74,7 +74,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     _player.setVolume(volume);
   }
 
-  // Listen to Firestore for new detections
+  // Listen to Firestore for new detections (cry + danger)
   void _listenToDetections() {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -101,41 +101,77 @@ class _NotificationScreenState extends State<NotificationScreen> {
       // If a NEW detection (new document ID), trigger alert
       if (latestId != lastSeenDocId) {
         lastSeenDocId = latestId;
-        await _triggerAlert(latest.data());
+        await _triggerAlert(latest.data() as Map<String, dynamic>);
       }
     });
   }
 
-  // Trigger sound, vibrate, and popup based on settings
+  // Trigger sound, vibration and popup depending on type
   Future<void> _triggerAlert(Map<String, dynamic> data) async {
-    final reason = data["reason"] ?? "Unknown";
+    final String type = (data["type"] ?? "cry").toString(); // cry / danger
+    final String reason = (data["reason"] ?? "Unknown").toString();
+    final String dangerType = (data["dangerType"] ?? "face_covered").toString();
 
-    // ========== SOUND ==========
+    // ---------- Build title & body ----------
+    String title;
+    String body;
+
+    if (type == "danger") {
+      // Face covered / unsafe position
+      title = "Danger! Baby might be in unsafe position";
+      String niceDangerText;
+      switch (dangerType) {
+        case "face_covered":
+          niceDangerText = "Face may be covered. Please check immediately.";
+          break;
+        case "unsafe_position":
+          niceDangerText = "Unsafe sleeping position detected.";
+          break;
+        default:
+          niceDangerText =
+          "Potential danger detected. Please check your baby.";
+      }
+      body = niceDangerText;
+    } else {
+      // Default: cry
+      title = "Baby is Crying!";
+      body = "Reason: $reason";
+    }
+
+    // ---------- SOUND ----------
     if (soundEnabled) {
       try {
         await _player.stop();
+        // For now reuse the same alert sound for both cry + danger
         await _player.play(
           AssetSource("sounds/$cryingSound"),
           volume: volume,
         );
       } catch (e) {
-        print("Sound error: $e");
+        debugPrint("Sound error: $e");
       }
     }
 
-    // ========== VIBRATE ==========
+    // ---------- VIBRATION ----------
     if (vibrateEnabled && (await Vibration.hasVibrator() ?? false)) {
-      Vibration.vibrate(duration: 1000);
+      if (type == "danger") {
+        // Stronger vibration pattern for danger
+        Vibration.vibrate(
+          pattern: [0, 800, 300, 800],
+        );
+      } else {
+        Vibration.vibrate(duration: 1000);
+      }
     }
 
-    // ========== POPUP NOTIFICATION ==========
+    // ---------- POPUP ----------
     if (popupEnabled) {
       AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: DateTime.now().millisecondsSinceEpoch % 100000,
           channelKey: 'baby_alert_channel',
-          title: "Baby is Crying!",
-          body: "Reason: $reason",
+          title: title,
+          body: body,
           displayOnForeground: true,
           displayOnBackground: true,
           wakeUpScreen: true,
@@ -165,7 +201,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
         iconTheme: const IconThemeData(color: accent),
         title: Image.asset('assets/images/logo2.png', height: 42),
       ),
-
       drawer: Drawer(
         backgroundColor: Colors.white,
         child: ListView(
@@ -190,7 +225,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 ],
               ),
             ),
-
             _drawerItem(
               Icons.settings,
               "Notification Settings",
@@ -211,7 +245,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 await FirebaseAuth.instance.signOut();
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => const LogoutSuccessScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const LogoutSuccessScreen()),
                       (route) => false,
                 );
               },
@@ -219,7 +254,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ],
         ),
       ),
-
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("parent")
@@ -231,27 +265,43 @@ class _NotificationScreenState extends State<NotificationScreen> {
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+                child: CircularProgressIndicator(color: accent));
           }
 
           final docs = snapshot.data!.docs;
           if (docs.isEmpty) {
             return const Center(
-              child: Text("No detections yet",
-                  style: TextStyle(fontFamily: "Poppins")),
+              child: Text(
+                "No detections yet",
+                style: TextStyle(fontFamily: "Poppins"),
+              ),
             );
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding:
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final doc = docs[i];
               final data = doc.data() as Map<String, dynamic>;
-              final timeText = data["timestamp_readable"] ?? "-";
+
+              final String timeText =
+              (data["timestamp_readable"] ?? "-").toString();
+              final String type =
+              (data["type"] ?? "cry").toString(); // cry / danger
+              final String? reason =
+              data["reason"] != null ? data["reason"].toString() : null;
+              final String? dangerType = data["dangerType"] != null
+                  ? data["dangerType"].toString()
+                  : null;
 
               return _notificationCard(
                 time: timeText,
+                type: type,
+                reason: reason,
+                dangerType: dangerType,
                 onTap: () {
                   Navigator.push(
                     context,
@@ -272,17 +322,54 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   // Drawer item widget
-  static Widget _drawerItem(IconData icon, String title, VoidCallback onTap) {
+  static Widget _drawerItem(
+      IconData icon, String title, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Colors.black87),
-      title: Text(title,
-          style: const TextStyle(fontFamily: "Poppins", fontSize: 15)),
+      title: Text(
+        title,
+        style: const TextStyle(fontFamily: "Poppins", fontSize: 15),
+      ),
       onTap: onTap,
     );
   }
 
-  // Notification card widget
-  Widget _notificationCard({required String time, required VoidCallback onTap}) {
+  // Notification card widget: supports CRY + DANGER
+  Widget _notificationCard({
+    required String time,
+    required String type,
+    required String? reason,
+    required String? dangerType,
+    required VoidCallback onTap,
+  }) {
+    final bool isDanger = type == "danger";
+
+    String mainText;
+    if (isDanger) {
+      String niceDanger;
+      switch (dangerType) {
+        case "face_covered":
+          niceDanger = "Face may be covered. Please check immediately.";
+          break;
+        case "unsafe_position":
+          niceDanger = "Unsafe sleeping position detected.";
+          break;
+        default:
+          niceDanger =
+          "Potential danger detected. Please check your baby.";
+      }
+      mainText = "Danger detected\n$niceDanger\n$time";
+    } else {
+      final String r = reason ?? "Unknown";
+      mainText = "Baby is crying\nReason: $r\n$time";
+    }
+
+    final Color cardColor =
+    isDanger ? Colors.red.shade50 : pinkSoft.withOpacity(0.35);
+    final Color iconColor = isDanger ? Colors.red : accent;
+    final IconData iconData =
+    isDanger ? Icons.warning_amber_rounded : Icons.child_care_rounded;
+
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
@@ -290,8 +377,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: pinkSoft.withOpacity(0.35),
+          color: cardColor,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDanger ? Colors.redAccent.withOpacity(0.5) : Colors.transparent,
+          ),
         ),
         child: Row(
           children: [
@@ -300,22 +390,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: accent.withOpacity(0.4)),
+                border: Border.all(color: iconColor.withOpacity(0.4)),
               ),
-              child:
-              const Icon(Icons.child_care_rounded, color: accent, size: 28),
+              child: Icon(iconData, color: iconColor, size: 28),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Text(
-                "Baby is crying\n$time",
-                style: const TextStyle(
+                mainText,
+                style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: isDanger ? FontWeight.w700 : FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
