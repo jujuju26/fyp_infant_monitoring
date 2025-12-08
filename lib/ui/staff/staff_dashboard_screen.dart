@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'meal_screen.dart'; // Placeholder for meal screen
+import 'staff_meal_screen.dart'; // Placeholder for meal screen
 import 'staff_booking_screen.dart'; // Placeholder for booking screen
 import 'staff_profile_screen.dart'; // Staff Profile screen
 import 'staff_home_screen.dart'; // Placeholder for staff home screen
@@ -20,7 +20,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   final List<Widget> _pages = [
     StaffHomeScreen(),
     StaffBookingsScreen(),
-    MealScreen(),
+    StaffMealScreen(),
     StaffReportScreen(),
     StaffProfileScreen(),
   ];

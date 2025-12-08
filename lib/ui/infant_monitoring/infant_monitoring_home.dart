@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../logout_success_screen.dart';
 import 'add_infant_screen.dart';
 import 'edit_infant_details_screen.dart';
+import 'infant_live_monitor_screen.dart';
 
 class InfantMonitoringHome extends StatefulWidget {
   const InfantMonitoringHome({super.key});
@@ -76,8 +78,9 @@ class _InfantMonitoringHomeState extends State<InfantMonitoringHome> {
             padding: const EdgeInsets.all(16),
             itemCount: infants.length,
             itemBuilder: (context, i) {
-              final data = infants[i].data() as Map<String, dynamic>;
-              final infantId = infants[i].id;
+              final doc = infants[i];
+              final data = doc.data() as Map<String, dynamic>;
+              final infantId = doc.id;
 
               final bool isSelected = selectedInfantId == infantId;
 
@@ -87,22 +90,28 @@ class _InfantMonitoringHomeState extends State<InfantMonitoringHome> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                   side: isSelected
-                      ? BorderSide(color: accent, width: 1.5)
+                      ? const BorderSide(color: accent, width: 1.5)
                       : BorderSide.none,
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(12),
 
+                  // 👇 When tapping an infant:
+                  // 1. Mark it as selected (for Edit in drawer)
+                  // 2. Navigate to live monitoring placeholder screen
                   onTap: () {
                     setState(() {
                       selectedInfantId = infantId;
                       selectedInfantData = data;
                     });
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("${data['name']} selected"),
-                        duration: Duration(seconds: 1),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InfantLiveMonitorScreen(
+                          infantId: infantId,
+                          infantData: data,
+                        ),
                       ),
                     );
                   },
@@ -209,16 +218,17 @@ class _AppDrawer extends StatelessWidget {
             ),
           ),
 
-          // EDIT
+          // EDIT INFANT (still works using selectedInfantId/Data)
           ListTile(
             leading: const Icon(Icons.edit, color: accent),
             title: const Text('Edit Infant Details',
                 style: TextStyle(fontFamily: 'Poppins')),
             onTap: () {
-              if (selectedInfantId == null) {
+              if (selectedInfantId == null || selectedInfantData == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text("Please tap an infant first to edit.")),
+                    content: Text("Please tap an infant first to edit."),
+                  ),
                 );
                 return;
               }
@@ -235,7 +245,7 @@ class _AppDrawer extends StatelessWidget {
             },
           ),
 
-          // ADD
+          // ADD INFANT
           ListTile(
             leading: const Icon(Icons.add_circle_outline, color: accent),
             title: const Text('Add Infant',
@@ -259,7 +269,8 @@ class _AppDrawer extends StatelessWidget {
               await FirebaseAuth.instance.signOut();
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => const LogoutSuccessScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const LogoutSuccessScreen()),
                     (route) => false,
               );
             },

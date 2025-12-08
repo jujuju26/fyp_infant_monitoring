@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'checkout_screen.dart';
+import 'storage_image_helper.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -380,11 +381,13 @@ class _CartScreenState extends State<CartScreen>
                                 // Fixed size image prevents Row overflow
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
-                                  child: Image.asset(
-                                    "assets/images/$imageName",
+                                  child: SizedBox(
                                     width: 90,
                                     height: 100,
-                                    fit: BoxFit.cover,
+                                    child: StorageHelper.networkImage(
+                                      imageName,      // Storage path
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
 

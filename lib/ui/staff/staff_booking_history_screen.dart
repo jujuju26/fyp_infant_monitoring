@@ -5,31 +5,42 @@ import 'package:intl/intl.dart';
 class StaffBookingHistoryScreen extends StatelessWidget {
   const StaffBookingHistoryScreen({Key? key}) : super(key: key);
 
+  // -------------------------
+  // DATE HELPERS
+  // -------------------------
+
+  /// FORMAT TO: "6 Dec 2025"
   String _formatDate(DateTime d) {
     return DateFormat('d MMM yyyy').format(d);
   }
 
+  /// SAFE PARSER: handles Timestamp, ISO string, or fallback.
   DateTime _parseDate(dynamic value) {
-    print("Parsing date: $value");
-    if (value == null) {
-      print("Date is null!");
-      return DateTime.now();
-    }
-    if (value is Timestamp) {
-      return value.toDate();
-    }
-    if (value is String) {
-      try {
-        DateTime parsedDate = DateTime.parse(value);
-        print("Parsed Date: $parsedDate");
-        return parsedDate;
-      } catch (e) {
-        print("Error parsing date: $e");
-        return DateTime.now();
+    if (value == null) return DateTime.now();
+
+    try {
+      if (value is Timestamp) {
+        return value.toDate();
       }
-    }
+      if (value is String) {
+        return DateTime.parse(value);
+      }
+    } catch (_) {}
+
     return DateTime.now();
   }
+
+  /// TRUE if date < today (ignoring time).
+  bool _isPastDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final bookingDay = DateTime(date.year, date.month, date.day);
+    return bookingDay.isBefore(today);
+  }
+
+  // -------------------------
+  // MAIN BUILD
+  // -------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -59,10 +70,13 @@ class StaffBookingHistoryScreen extends StatelessWidget {
           final parents = parentSnap.data!.docs;
           List<Widget> historyWidgets = [];
 
-          for (var p in parents) {
-            final parentId = p.id;
-            final parentName = p['username'] ?? "Parent";
+          for (var parent in parents) {
+            final String parentId = parent.id;
+            final String parentName = parent['username'] ?? "Parent";
 
+            // -------------------------
+            // PARENT HEADER
+            // -------------------------
             historyWidgets.add(
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
@@ -78,6 +92,9 @@ class StaffBookingHistoryScreen extends StatelessWidget {
               ),
             );
 
+            // -------------------------
+            // STREAM: bookings
+            // -------------------------
             historyWidgets.add(
               StreamBuilder(
                 stream: FirebaseFirestore.instance
@@ -92,130 +109,134 @@ class StaffBookingHistoryScreen extends StatelessWidget {
                   final bookings = bookSnap.data!.docs;
                   if (bookings.isEmpty) return Container();
 
-                  return Column(
-                    children: bookings.map((b) {
-                      final data = b.data() as Map<String, dynamic>;
-                      final packages = data["packages"];
+                  List<Widget> bookingCards = [];
 
-                      print("Packages: $packages");
+                  for (var booking in bookings) {
+                    final data = booking.data() as Map<String, dynamic>;
+                    final packages = data["packages"];
 
-                      if (packages != null && packages.isNotEmpty) {
-                        final package = packages[0] ?? {};
+                    if (packages == null || packages.isEmpty) continue;
 
-                        final inDate = data["checkInDate"];
-                        final outDate = data["checkOutDate"];
+                    final pkg = packages[0];
+                    final checkInRaw = data["checkInDate"];
+                    final checkOutRaw = data["checkOutDate"];
 
-                        print("checkInDate: $inDate");
-                        print("checkOutDate: $outDate");
+                    final DateTime checkInDate = _parseDate(checkInRaw);
+                    final DateTime checkOutDate = _parseDate(checkOutRaw);
 
-                        final DateTime parsedInDate = _parseDate(inDate);
-                        final DateTime parsedOutDate = _parseDate(outDate);
+                    // ⭐ ONLY SHOW IF check-in < today
+                    if (!_isPastDate(checkInDate)) continue;
 
-                        print("Parsed Check-in Date: ${_formatDate(parsedInDate)}");
-
-                        // ⭐ Only show past bookings (based on CHECK-IN date only)
-                        if (!parsedInDate.isBefore(DateTime.now())) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFADADD),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  offset: const Offset(0, 4),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.local_offer,
-                                        color: Color(0xFFC2868B)),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      package["name"] ?? "Package",
-                                      style: const TextStyle(
-                                        fontFamily: "Poppins",
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 16,
-                                      ),
+                    // -------------------------
+                    // BOOKING CARD
+                    // -------------------------
+                    bookingCards.add(
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFADADD),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                offset: const Offset(0, 4),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // PACKAGE NAME
+                              Row(
+                                children: [
+                                  const Icon(Icons.local_offer, color: Color(0xFFC2868B)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    pkg["name"] ?? "Package",
+                                    style: const TextStyle(
+                                      fontFamily: "Poppins",
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
+                              ),
 
-                                const SizedBox(height: 6),
+                              const SizedBox(height: 6),
 
-                                Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today,
-                                        size: 18, color: Colors.grey),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "Check-in: ${_formatDate(parsedInDate)}",
-                                      style: const TextStyle(fontFamily: "Poppins"),
-                                    ),
-                                  ],
-                                ),
+                              // CHECK-IN
+                              Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "Check-in: ${_formatDate(checkInDate)}",
+                                    style: const TextStyle(fontFamily: "Poppins"),
+                                  ),
+                                ],
+                              ),
 
-                                const SizedBox(height: 4),
+                              const SizedBox(height: 4),
 
-                                Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today,
-                                        size: 18, color: Colors.grey),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "Check-out: ${_formatDate(parsedOutDate)}",
-                                      style: const TextStyle(fontFamily: "Poppins"),
-                                    ),
-                                  ],
-                                ),
+                              // CHECK-OUT
+                              Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 18, color: Colors.grey),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "Check-out: ${_formatDate(checkOutDate)}",
+                                    style: const TextStyle(fontFamily: "Poppins"),
+                                  ),
+                                ],
+                              ),
 
-                                const SizedBox(height: 6),
+                              const SizedBox(height: 6),
 
-                                Row(
-                                  children: [
-                                    Icon(
-                                      data["status"] == "APPROVED"
-                                          ? Icons.check_circle
-                                          : Icons.cancel,
+                              // STATUS
+                              Row(
+                                children: [
+                                  Icon(
+                                    data["status"] == "APPROVED"
+                                        ? Icons.check_circle
+                                        : Icons.cancel,
+                                    color: data["status"] == "APPROVED"
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "Status: ${data["status"]}",
+                                    style: TextStyle(
+                                      fontFamily: "Poppins",
+                                      fontWeight: FontWeight.bold,
                                       color: data["status"] == "APPROVED"
                                           ? Colors.green
                                           : Colors.red,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "Status: ${data["status"]}",
-                                      style: TextStyle(
-                                        fontFamily: "Poppins",
-                                        fontWeight: FontWeight.bold,
-                                        color: data["status"] == "APPROVED"
-                                            ? Colors.green
-                                            : Colors.red,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        );
-                      } else {
-                        print("No packages found or packages is null");
-                        return const SizedBox.shrink();
-                      }
-                    }).toList(),
-                  );
+                        ),
+                      ),
+                    );
+                  }
+
+                  if (bookingCards.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        "No past bookings.",
+                        style: TextStyle(fontFamily: "Poppins", color: Colors.black54),
+                      ),
+                    );
+                  }
+
+                  return Column(children: bookingCards);
                 },
               ),
             );

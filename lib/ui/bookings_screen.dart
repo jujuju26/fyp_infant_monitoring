@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'meal_planner_screen.dart';
+
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({Key? key}) : super(key: key);
 
@@ -181,6 +183,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
         children: [
           _buildBookingDetails(booking),
 
+          const SizedBox(height: 12),
+
+          _buildMealPlannerButton(booking['id']),   // <-- NEW BUTTON HERE
+
           if (allowCancel)
             _buildCancelButton(booking['id']),
         ],
@@ -337,4 +343,32 @@ class _BookingsScreenState extends State<BookingsScreen> {
       ],
     );
   }
+
+  Widget _buildMealPlannerButton(String bookingId) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Color(0xFFC2868B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MealPlannerScreen(
+              bookingId: bookingId,
+            ),
+          ),
+        );
+      },
+      child: const Text(
+        "Meal Planner",
+        style: TextStyle(
+          fontFamily: "Poppins",
+          color: Colors.white,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
 }

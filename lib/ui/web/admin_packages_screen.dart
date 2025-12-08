@@ -1,7 +1,10 @@
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-
+import '../storage_image_helper.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_profile_screen.dart';
@@ -24,7 +27,6 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
   String adminName = "";
   String adminRole = "Admin";
 
-  // Filters / sorting
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
   String _sortBy = "Name A–Z";
@@ -68,10 +70,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         );
         break;
       case 'Packages':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const AdminPackagesScreen()),
-        );
+      // already here
         break;
       case 'Report':
         Navigator.push(
@@ -95,9 +94,65 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     }
   }
 
+  // ---------- IMAGE UPLOAD HELPERS ----------
+
+  /// Pick one image and upload to:
+  ///   packages/<timestamp>_<cleanedFileName>
+  /// Returns ONLY the storage path, e.g. "packages/1765015315507_deluxe1.png".
+  Future<String?> _pickAndUploadImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return null;
+
+      final PlatformFile file = result.files.first;
+      final Uint8List? bytes = file.bytes;
+      if (bytes == null) return null;
+
+      final String cleanName =
+      file.name.replaceAll(RegExp(r'[^a-zA-Z0-9\._-]'), '_');
+      final String fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_$cleanName';
+
+      final ref = FirebaseStorage.instance.ref().child('packages').child(fileName);
+
+      await ref.putData(bytes);
+
+      // Store ONLY the STORAGE PATH
+      return ref.fullPath; // e.g. "packages/1765015315507_deluxe1.png"
+    } catch (e) {
+      debugPrint('Upload error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error uploading image: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
   // ---------- CRUD HELPERS ----------
 
   Future<void> _deletePackage(String id) async {
+    // Optional: prevent delete if package has bookings
+    final bookings = await _firestore
+        .collectionGroup('bookings')
+        .where('packagesIds', arrayContains: id)
+        .get();
+
+    if (bookings.docs.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot delete: package already has customer bookings.'),
+        ),
+      );
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -141,7 +196,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     }
   }
 
-  /// Add / Edit package dialog – only saves image filenames (assets), no upload
+  /// Add / Edit package dialog – uploads images to Firebase Storage
   Future<void> _showPackageDialog({
     String? docId,
     Map<String, dynamic>? existingData,
@@ -151,21 +206,18 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     final nameController =
     TextEditingController(text: existingData?['name'] ?? '');
     final priceController = TextEditingController(
-        text: existingData?['price'] != null
-            ? (existingData!['price']).toString()
-            : '');
+      text: existingData?['price'] != null
+          ? (existingData!['price']).toString()
+          : '',
+    );
     final descriptionController =
     TextEditingController(text: existingData?['description'] ?? '');
 
-    // existing filenames from Firestore
-    List<String> existingImageNames = [];
+    // Stored as Storage paths like: "packages/1765..._deluxe1.png"
+    List<String> imagePaths = [];
     if (existingData?['images'] != null) {
-      existingImageNames = List<String>.from(existingData!['images']);
+      imagePaths = List<String>.from(existingData!['images']);
     }
-
-    final imageNamesController = TextEditingController(
-      text: existingImageNames.join(', '),
-    );
 
     final formKey = GlobalKey<FormState>();
 
@@ -173,188 +225,272 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       context: context,
       builder: (_) {
         return Dialog(
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            width: 600,
-            height: MediaQuery.of(context).size.height * 0.8,
-            padding: const EdgeInsets.all(20),
-            child: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isEdit ? "Edit Package" : "Add Package",
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: accent,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: StatefulBuilder(
+            builder: (context, setInnerState) {
+              Future<void> addImage() async {
+                final path = await _pickAndUploadImage();
+                if (path != null) {
+                  setInnerState(() {
+                    imagePaths.add(path);
+                  });
+                }
+              }
 
-                    // ----- NAME -----
-                    TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: "Package Name",
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      validator: (v) =>
-                      v == null || v.trim().isEmpty ? "Required" : null,
-                    ),
-                    const SizedBox(height: 12),
+              void removeImage(int index) {
+                setInnerState(() {
+                  imagePaths.removeAt(index);
+                });
+              }
 
-                    // ----- PRICE -----
-                    TextFormField(
-                      controller: priceController,
-                      keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: "Price (RM)",
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return "Required";
-                        }
-                        final val = double.tryParse(v.trim());
-                        if (val == null || val < 0) {
-                          return "Enter valid price";
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    // ----- DESCRIPTION -----
-                    TextFormField(
-                      controller: descriptionController,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: "Description",
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    const Text(
-                      "Image filenames (from assets/images/)",
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: imageNamesController,
-                      decoration: const InputDecoration(
-                        hintText: "Example: deluxe1.png, deluxe2.png, deluxe3.png",
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Note: these files must exist in assets/images/ "
-                          "and be listed under assets: in pubspec.yaml.",
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 11,
-                        color: Colors.black54,
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ----- ACTION BUTTONS -----
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+              return Container(
+                width: 600,
+                height: MediaQuery.of(context).size.height * 0.85,
+                padding: const EdgeInsets.all(20),
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            "Cancel",
-                            style: TextStyle(
-                              fontFamily: 'Poppins',
-                              color: Colors.black54,
-                            ),
+                        Text(
+                          isEdit ? "Edit Package" : "Add Package",
+                          style: const TextStyle(
+                            fontFamily: 'Poppins',
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: accent,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: accent),
-                          onPressed: () async {
-                            if (!formKey.currentState!.validate()) return;
+                        const SizedBox(height: 20),
 
-                            // parse filenames
-                            final raw = imageNamesController.text.trim();
-                            final List<String> imageList = raw.isEmpty
-                                ? []
-                                : raw
-                                .split(',')
-                                .map((s) => s.trim())
-                                .where((s) => s.isNotEmpty)
-                                .toList();
-
-                            final data = {
-                              'name': nameController.text.trim(),
-                              'price':
-                              double.parse(priceController.text.trim()),
-                              'description':
-                              descriptionController.text.trim(),
-                              'images': imageList,
-                            };
-
-                            try {
-                              if (isEdit) {
-                                await _firestore
-                                    .collection('package')
-                                    .doc(docId)
-                                    .update(data);
-                              } else {
-                                await _firestore
-                                    .collection('package')
-                                    .add(data);
-                              }
-                              if (context.mounted) {
-                                Navigator.pop(context);
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Error ${isEdit ? "updating" : "adding"} package: $e',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          child: Text(
-                            isEdit ? "Save" : "Add",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Poppins',
-                            ),
+                        // ----- NAME -----
+                        TextFormField(
+                          controller: nameController,
+                          decoration: const InputDecoration(
+                            labelText: "Package Name",
+                            filled: true,
+                            fillColor: Colors.white,
                           ),
+                          validator: (v) =>
+                          v == null || v.trim().isEmpty ? "Required" : null,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // ----- PRICE -----
+                        TextFormField(
+                          controller: priceController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: "Price (RM)",
+                            filled: true,
+                            fillColor: Colors.white,
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return "Required";
+                            }
+                            final val = double.tryParse(v.trim());
+                            if (val == null || val < 0) {
+                              return "Enter valid price";
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+
+                        // ----- DESCRIPTION -----
+                        TextFormField(
+                          controller: descriptionController,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: "Description",
+                            filled: true,
+                            fillColor: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        const Text(
+                          "Images (stored in Firebase Storage)",
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Thumbnails row
+                        SizedBox(
+                          height: 110,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: imagePaths.isEmpty
+                                    ? Container(
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius:
+                                    BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: Colors.grey.shade300),
+                                  ),
+                                  child: const Text(
+                                    "No images selected",
+                                    style: TextStyle(
+                                        fontFamily: 'Poppins',
+                                        fontSize: 12),
+                                  ),
+                                )
+                                    : ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: imagePaths.length,
+                                  separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 8),
+                                  itemBuilder: (context, index) {
+                                    final path = imagePaths[index];
+                                    return Stack(
+                                      children: [
+                                        Container(
+                                          width: 100,
+                                          height: 100,
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                            BorderRadius.circular(12),
+                                            color: Colors.grey.shade200,
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius:
+                                            BorderRadius.circular(12),
+                                            child: StorageHelper.networkImage(
+                                              path,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          right: 0,
+                                          top: 0,
+                                          child: InkWell(
+                                            onTap: () =>
+                                                removeImage(index),
+                                            child: Container(
+                                              decoration:
+                                              const BoxDecoration(
+                                                color: Colors.black54,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              padding:
+                                              const EdgeInsets.all(4),
+                                              child: const Icon(
+                                                Icons.close,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              ElevatedButton.icon(
+                                onPressed: addImage,
+                                icon: const Icon(Icons.add_photo_alternate),
+                                label: const Text(
+                                  "Add",
+                                  style: TextStyle(fontFamily: 'Poppins'),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: accent,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // ----- ACTION BUTTONS -----
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text(
+                                "Cancel",
+                                style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: accent,
+                              ),
+                              onPressed: () async {
+                                if (!formKey.currentState!.validate()) return;
+
+                                final data = {
+                                  'name': nameController.text.trim(),
+                                  'price': double.parse(
+                                      priceController.text.trim()),
+                                  'description':
+                                  descriptionController.text.trim(),
+                                  'images': imagePaths, // STORAGE PATHS ONLY
+                                };
+
+                                try {
+                                  if (isEdit) {
+                                    await _firestore
+                                        .collection('package')
+                                        .doc(docId)
+                                        .update(data);
+                                  } else {
+                                    await _firestore
+                                        .collection('package')
+                                        .add(data);
+                                  }
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Error ${isEdit ? "updating" : "adding"} package: $e',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              child: Text(
+                                isEdit ? "Save" : "Add",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    )
-                  ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         );
       },
@@ -412,9 +548,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
           ),
           Divider(color: Colors.grey[300]),
           ListTile(
-            leading:
-            const Icon(Icons.power_settings_new, color: Colors.black54),
-            title: const Text('Logout', style: TextStyle(fontFamily: 'Poppins')),
+            leading: const Icon(Icons.power_settings_new, color: Colors.black54),
+            title: const Text('Logout',
+                style: TextStyle(fontFamily: 'Poppins')),
             onTap: _logout,
           ),
           const SizedBox(height: 20),
@@ -498,13 +634,11 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
 
     final String query = _searchQuery.toLowerCase();
 
-    // Search by name
     var filtered = list.where((pkg) {
       final name = (pkg['name'] as String).toLowerCase();
       return name.contains(query);
     }).toList();
 
-    // Price filter
     filtered = filtered.where((pkg) {
       final price = pkg['price'] as double;
       switch (_priceFilter) {
@@ -519,7 +653,6 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       }
     }).toList();
 
-    // Sorting
     filtered.sort((a, b) {
       switch (_sortBy) {
         case "Name A–Z":
@@ -575,7 +708,6 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             ),
                             Row(
                               children: [
-                                // Sort dropdown
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 4),
@@ -653,10 +785,10 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                   borderRadius: BorderRadius.circular(30),
                                   boxShadow: [
                                     BoxShadow(
-                                        color:
-                                        Colors.black.withOpacity(0.05),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 3)),
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 3),
+                                    ),
                                   ],
                                 ),
                                 child: TextField(
@@ -683,9 +815,10 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                      color: Colors.black.withOpacity(0.05),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 3)),
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 3),
+                                  ),
                                 ],
                               ),
                               child: DropdownButton<String>(
@@ -729,7 +862,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                     fontFamily: 'Poppins',
                                     color: Colors.black54),
                               ),
-                            )
+                            ),
                           ],
                         ),
 
@@ -744,7 +877,8 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                               if (snapshot.connectionState ==
                                   ConnectionState.waiting) {
                                 return const Center(
-                                    child: CircularProgressIndicator());
+                                  child: CircularProgressIndicator(),
+                                );
                               }
                               if (!snapshot.hasData ||
                                   snapshot.data!.docs.isEmpty) {
@@ -809,7 +943,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
   }
 }
 
-// ---------- CARD WIDGET WITH SAFE LAYOUT (NO OVERFLOW) ----------
+// ---------- CARD WIDGET (uses StorageHelper) ----------
 
 class _PackageCard extends StatefulWidget {
   final Map<String, dynamic> data;
@@ -836,7 +970,8 @@ class _PackageCardState extends State<_PackageCard> {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> images = List<String>.from(widget.data['images'] ?? []);
+    final List<String> images =
+    List<String>.from(widget.data['images'] ?? []);
     final String name = widget.data['name'] ?? '';
     final double price = (widget.data['price'] as num?)?.toDouble() ?? 0.0;
 
@@ -857,7 +992,7 @@ class _PackageCardState extends State<_PackageCard> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          // ---------------- IMAGE CAROUSEL ----------------
+          // IMAGE CAROUSEL
           SizedBox(
             height: 120,
             child: ClipRRect(
@@ -874,40 +1009,42 @@ class _PackageCardState extends State<_PackageCard> {
                 children: [
                   PageView.builder(
                     itemCount: images.length,
-                    onPageChanged: (i) => setState(() => _currentImage = i),
+                    onPageChanged: (i) =>
+                        setState(() => _currentImage = i),
                     itemBuilder: (_, index) {
-                      return Image.asset(
-                        "assets/images/${images[index]}",
+                      final path = images[index];
+                      return StorageHelper.networkImage(
+                        path,
                         fit: BoxFit.cover,
                       );
                     },
                   ),
-
-                  // ● ● ● page indicator
-                  Positioned(
-                    bottom: 5,
-                    left: 0,
-                    right: 0,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(images.length, (i) {
-                        bool active = i == _currentImage;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          margin:
-                          const EdgeInsets.symmetric(horizontal: 3),
-                          width: active ? 10 : 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? widget.accent
-                                : Colors.white.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        );
-                      }),
+                  if (images.length > 1)
+                    Positioned(
+                      bottom: 5,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(images.length, (i) {
+                          final active = i == _currentImage;
+                          return AnimatedContainer(
+                            duration:
+                            const Duration(milliseconds: 250),
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 3),
+                            width: active ? 10 : 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: active
+                                  ? widget.accent
+                                  : Colors.white.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          );
+                        }),
+                      ),
                     ),
-                  )
                 ],
               ),
             ),
@@ -915,7 +1052,6 @@ class _PackageCardState extends State<_PackageCard> {
 
           const SizedBox(height: 8),
 
-          // ---------------- PACKAGE NAME ----------------
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -933,7 +1069,6 @@ class _PackageCardState extends State<_PackageCard> {
 
           const SizedBox(height: 4),
 
-          // ---------------- PRICE ----------------
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -948,7 +1083,6 @@ class _PackageCardState extends State<_PackageCard> {
 
           const SizedBox(height: 12),
 
-          // ---------------- EDIT / DELETE BUTTONS ----------------
           SizedBox(
             height: 40,
             child: Row(
@@ -958,35 +1092,48 @@ class _PackageCardState extends State<_PackageCard> {
                     onPressed: widget.onEdit,
                     icon: Icon(Icons.edit,
                         size: 16, color: widget.accent),
-                    label: Text("Edit",
-                        style: TextStyle(
-                            fontFamily: 'Poppins', color: widget.accent)),
+                    label: Text(
+                      "Edit",
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        color: widget.accent,
+                      ),
+                    ),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 4),
                       minimumSize: const Size(0, 40),
                       side: BorderSide(color: widget.accent),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
-
                 const SizedBox(width: 8),
-
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: widget.onDelete,
-                    icon: const Icon(Icons.delete_outline,
-                        size: 16, color: Colors.white),
-                    label: const Text("Delete",
-                        style:
-                        TextStyle(fontFamily: 'Poppins', color: Colors.white)),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      "Delete",
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        color: Colors.white,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 4),
                       minimumSize: const Size(0, 40),
                       backgroundColor: Colors.redAccent,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
