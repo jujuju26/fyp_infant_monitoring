@@ -70,7 +70,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         );
         break;
       case 'Packages':
-      // already here
+        // already here
         break;
       case 'Report':
         Navigator.push(
@@ -87,7 +87,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const AdminLogoutScreen()),
-            (route) => false,
+        (route) => false,
       );
     } catch (e) {
       debugPrint('Error signing out: $e');
@@ -113,12 +113,17 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       final Uint8List? bytes = file.bytes;
       if (bytes == null) return null;
 
-      final String cleanName =
-      file.name.replaceAll(RegExp(r'[^a-zA-Z0-9\._-]'), '_');
+      final String cleanName = file.name.replaceAll(
+        RegExp(r'[^a-zA-Z0-9\._-]'),
+        '_',
+      );
       final String fileName =
           '${DateTime.now().millisecondsSinceEpoch}_$cleanName';
 
-      final ref = FirebaseStorage.instance.ref().child('packages').child(fileName);
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('packages')
+          .child(fileName);
 
       await ref.putData(bytes);
 
@@ -127,9 +132,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     } catch (e) {
       debugPrint('Upload error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error uploading image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error uploading image: $e')));
       }
       return null;
     }
@@ -137,17 +142,47 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
 
   // ---------- CRUD HELPERS ----------
 
-  Future<void> _deletePackage(String id) async {
-    // Optional: prevent delete if package has bookings
-    final bookings = await _firestore
-        .collectionGroup('bookings')
-        .where('packagesIds', arrayContains: id)
+  Future<bool> _isPackageBooked(String packageId) async {
+    final snap = await _firestore
+        .collection("bookings")
+        .where("packageId", isEqualTo: packageId)
+        .limit(1)
         .get();
 
-    if (bookings.docs.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot delete: package already has customer bookings.'),
+    return snap.docs.isNotEmpty;
+  }
+
+  Future<void> _deletePackage(String id) async {
+    final bookingSnap = await _firestore
+        .collection("bookings")
+        .where("packageId", isEqualTo: id)
+        .limit(1)
+        .get();
+
+    if (bookingSnap.docs.isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            "Cannot Delete Package",
+            style: TextStyle(
+              fontFamily: "Poppins",
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: const Text(
+            "This package cannot be deleted because one or more parents have already booked it.",
+            style: TextStyle(fontFamily: "Poppins"),
+          ),
+          actions: [
+            TextButton(
+              child: const Text("OK", style: TextStyle(fontFamily: "Poppins")),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
         ),
       );
       return;
@@ -158,12 +193,12 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          "Delete package?",
-          style: TextStyle(fontFamily: 'Poppins'),
+          "Delete Package?",
+          style: TextStyle(fontFamily: "Poppins"),
         ),
         content: const Text(
           "This action cannot be undone.",
-          style: TextStyle(fontFamily: 'Poppins'),
+          style: TextStyle(fontFamily: "Poppins"),
         ),
         actions: [
           TextButton(
@@ -173,10 +208,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: accent),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              "Delete",
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text("Delete", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -186,32 +218,33 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
 
     try {
       await _firestore.collection('package').doc(id).delete();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Package deleted')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Package deleted')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting package: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error deleting package: $e')));
     }
   }
 
-  /// Add / Edit package dialog – uploads images to Firebase Storage
   Future<void> _showPackageDialog({
     String? docId,
     Map<String, dynamic>? existingData,
   }) async {
     final bool isEdit = docId != null && existingData != null;
 
-    final nameController =
-    TextEditingController(text: existingData?['name'] ?? '');
+    final nameController = TextEditingController(
+      text: existingData?['name'] ?? '',
+    );
     final priceController = TextEditingController(
       text: existingData?['price'] != null
           ? (existingData!['price']).toString()
           : '',
     );
-    final descriptionController =
-    TextEditingController(text: existingData?['description'] ?? '');
+    final descriptionController = TextEditingController(
+      text: existingData?['description'] ?? '',
+    );
 
     // Stored as Storage paths like: "packages/1765..._deluxe1.png"
     List<String> imagePaths = [];
@@ -225,7 +258,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       context: context,
       builder: (_) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: StatefulBuilder(
             builder: (context, setInnerState) {
               Future<void> addImage() async {
@@ -273,7 +308,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             fillColor: Colors.white,
                           ),
                           validator: (v) =>
-                          v == null || v.trim().isEmpty ? "Required" : null,
+                              v == null || v.trim().isEmpty ? "Required" : null,
                         ),
                         const SizedBox(height: 12),
 
@@ -331,73 +366,78 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                               Expanded(
                                 child: imagePaths.isEmpty
                                     ? Container(
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius:
-                                    BorderRadius.circular(12),
-                                    border: Border.all(
-                                        color: Colors.grey.shade300),
-                                  ),
-                                  child: const Text(
-                                    "No images selected",
-                                    style: TextStyle(
-                                        fontFamily: 'Poppins',
-                                        fontSize: 12),
-                                  ),
-                                )
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          "No images selected",
+                                          style: TextStyle(
+                                            fontFamily: 'Poppins',
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      )
                                     : ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: imagePaths.length,
-                                  separatorBuilder: (_, __) =>
-                                  const SizedBox(width: 8),
-                                  itemBuilder: (context, index) {
-                                    final path = imagePaths[index];
-                                    return Stack(
-                                      children: [
-                                        Container(
-                                          width: 100,
-                                          height: 100,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                            BorderRadius.circular(12),
-                                            color: Colors.grey.shade200,
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius:
-                                            BorderRadius.circular(12),
-                                            child: StorageHelper.networkImage(
-                                              path,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          right: 0,
-                                          top: 0,
-                                          child: InkWell(
-                                            onTap: () =>
-                                                removeImage(index),
-                                            child: Container(
-                                              decoration:
-                                              const BoxDecoration(
-                                                color: Colors.black54,
-                                                shape: BoxShape.circle,
+                                        scrollDirection: Axis.horizontal,
+                                        itemCount: imagePaths.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(width: 8),
+                                        itemBuilder: (context, index) {
+                                          final path = imagePaths[index];
+                                          return Stack(
+                                            children: [
+                                              Container(
+                                                width: 100,
+                                                height: 100,
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  color: Colors.grey.shade200,
+                                                ),
+                                                child: ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  child:
+                                                      StorageHelper.networkImage(
+                                                        path,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                                ),
                                               ),
-                                              padding:
-                                              const EdgeInsets.all(4),
-                                              child: const Icon(
-                                                Icons.close,
-                                                size: 14,
-                                                color: Colors.white,
+                                              Positioned(
+                                                right: 0,
+                                                top: 0,
+                                                child: InkWell(
+                                                  onTap: () =>
+                                                      removeImage(index),
+                                                  child: Container(
+                                                    decoration:
+                                                        const BoxDecoration(
+                                                          color: Colors.black54,
+                                                          shape:
+                                                              BoxShape.circle,
+                                                        ),
+                                                    padding:
+                                                        const EdgeInsets.all(4),
+                                                    child: const Icon(
+                                                      Icons.close,
+                                                      size: 14,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
+                                            ],
+                                          );
+                                        },
+                                      ),
                               ),
                               const SizedBox(width: 10),
                               ElevatedButton.icon(
@@ -410,7 +450,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: accent,
                                 ),
-                              )
+                              ),
                             ],
                           ),
                         ),
@@ -442,9 +482,10 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                 final data = {
                                   'name': nameController.text.trim(),
                                   'price': double.parse(
-                                      priceController.text.trim()),
-                                  'description':
-                                  descriptionController.text.trim(),
+                                    priceController.text.trim(),
+                                  ),
+                                  'description': descriptionController.text
+                                      .trim(),
                                   'images': imagePaths, // STORAGE PATHS ONLY
                                 };
 
@@ -503,7 +544,11 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     final items = [
       {'icon': Icons.dashboard, 'label': 'Dashboard', 'selected': false},
       {'icon': Icons.people, 'label': 'Staff', 'selected': false},
-      {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': true},
+      {
+        'icon': Icons.shopping_bag_outlined,
+        'label': 'Packages',
+        'selected': true,
+      },
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
@@ -548,9 +593,14 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
           ),
           Divider(color: Colors.grey[300]),
           ListTile(
-            leading: const Icon(Icons.power_settings_new, color: Colors.black54),
-            title: const Text('Logout',
-                style: TextStyle(fontFamily: 'Poppins')),
+            leading: const Icon(
+              Icons.power_settings_new,
+              color: Colors.black54,
+            ),
+            title: const Text(
+              'Logout',
+              style: TextStyle(fontFamily: 'Poppins'),
+            ),
             onTap: _logout,
           ),
           const SizedBox(height: 20),
@@ -580,16 +630,18 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
               Text(
                 adminName.isEmpty ? "Loading..." : adminName,
                 style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'Poppins'),
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Poppins',
+                ),
               ),
               Text(
                 adminRole,
                 style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.black54,
-                    fontFamily: 'Poppins'),
+                  fontSize: 11,
+                  color: Colors.black54,
+                  fontFamily: 'Poppins',
+                ),
               ),
             ],
           ),
@@ -656,13 +708,13 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     filtered.sort((a, b) {
       switch (_sortBy) {
         case "Name A–Z":
-          return (a['name'] as String)
-              .toLowerCase()
-              .compareTo((b['name'] as String).toLowerCase());
+          return (a['name'] as String).toLowerCase().compareTo(
+            (b['name'] as String).toLowerCase(),
+          );
         case "Name Z–A":
-          return (b['name'] as String)
-              .toLowerCase()
-              .compareTo((a['name'] as String).toLowerCase());
+          return (b['name'] as String).toLowerCase().compareTo(
+            (a['name'] as String).toLowerCase(),
+          );
         case "Price Low–High":
           return (a['price'] as double).compareTo(b['price'] as double);
         case "Price High–Low":
@@ -710,7 +762,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 4),
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(30),
@@ -726,20 +780,25 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                     value: _sortBy,
                                     underline: const SizedBox(),
                                     icon: const Icon(
-                                        Icons.keyboard_arrow_down_outlined),
+                                      Icons.keyboard_arrow_down_outlined,
+                                    ),
                                     items: const [
                                       DropdownMenuItem(
-                                          value: "Name A–Z",
-                                          child: Text("Name A–Z")),
+                                        value: "Name A–Z",
+                                        child: Text("Name A–Z"),
+                                      ),
                                       DropdownMenuItem(
-                                          value: "Name Z–A",
-                                          child: Text("Name Z–A")),
+                                        value: "Name Z–A",
+                                        child: Text("Name Z–A"),
+                                      ),
                                       DropdownMenuItem(
-                                          value: "Price Low–High",
-                                          child: Text("Price Low–High")),
+                                        value: "Price Low–High",
+                                        child: Text("Price Low–High"),
+                                      ),
                                       DropdownMenuItem(
-                                          value: "Price High–Low",
-                                          child: Text("Price High–Low")),
+                                        value: "Price High–Low",
+                                        child: Text("Price High–Low"),
+                                      ),
                                     ],
                                     onChanged: (value) {
                                       if (value != null) {
@@ -756,13 +815,16 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                       borderRadius: BorderRadius.circular(30),
                                     ),
                                   ),
-                                  icon: const Icon(Icons.add,
-                                      color: Colors.white),
+                                  icon: const Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                  ),
                                   label: const Text(
                                     "Add Package",
                                     style: TextStyle(
-                                        fontFamily: 'Poppins',
-                                        color: Colors.white),
+                                      fontFamily: 'Poppins',
+                                      color: Colors.white,
+                                    ),
                                   ),
                                   onPressed: () => _showPackageDialog(),
                                 ),
@@ -779,7 +841,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             Expanded(
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 4),
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(30),
@@ -794,12 +858,13 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                 child: TextField(
                                   controller: _searchController,
                                   onChanged: (value) {
-                                    setState(
-                                            () => _searchQuery = value.trim());
+                                    setState(() => _searchQuery = value.trim());
                                   },
                                   decoration: InputDecoration(
-                                    prefixIcon: Icon(Icons.search,
-                                        color: Colors.grey.shade500),
+                                    prefixIcon: Icon(
+                                      Icons.search,
+                                      color: Colors.grey.shade500,
+                                    ),
                                     hintText: "Search by package name",
                                     border: InputBorder.none,
                                   ),
@@ -809,7 +874,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                             const SizedBox(width: 16),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(30),
@@ -825,19 +892,25 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                 value: _priceFilter,
                                 underline: const SizedBox(),
                                 icon: const Icon(
-                                    Icons.keyboard_arrow_down_outlined),
+                                  Icons.keyboard_arrow_down_outlined,
+                                ),
                                 items: const [
                                   DropdownMenuItem(
-                                      value: "All", child: Text("All Prices")),
+                                    value: "All",
+                                    child: Text("All Prices"),
+                                  ),
                                   DropdownMenuItem(
-                                      value: "Below RM 3000",
-                                      child: Text("Below RM 3000")),
+                                    value: "Below RM 3000",
+                                    child: Text("Below RM 3000"),
+                                  ),
                                   DropdownMenuItem(
-                                      value: "RM 3000 - RM 6000",
-                                      child: Text("RM 3000 - RM 6000")),
+                                    value: "RM 3000 - RM 6000",
+                                    child: Text("RM 3000 - RM 6000"),
+                                  ),
                                   DropdownMenuItem(
-                                      value: "Above RM 6000",
-                                      child: Text("Above RM 6000")),
+                                    value: "Above RM 6000",
+                                    child: Text("Above RM 6000"),
+                                  ),
                                 ],
                                 onChanged: (value) {
                                   if (value != null) {
@@ -859,8 +932,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                               child: const Text(
                                 "Reset",
                                 style: TextStyle(
-                                    fontFamily: 'Poppins',
-                                    color: Colors.black54),
+                                  fontFamily: 'Poppins',
+                                  color: Colors.black54,
+                                ),
                               ),
                             ),
                           ],
@@ -871,8 +945,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                         // Package grid
                         Expanded(
                           child: StreamBuilder<QuerySnapshot>(
-                            stream:
-                            _firestore.collection('package').snapshots(),
+                            stream: _firestore
+                                .collection('package')
+                                .snapshots(),
                             builder: (context, snapshot) {
                               if (snapshot.connectionState ==
                                   ConnectionState.waiting) {
@@ -886,32 +961,37 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                                   child: Text(
                                     "No packages available.",
                                     style: TextStyle(
-                                        fontFamily: 'Poppins', fontSize: 16),
+                                      fontFamily: 'Poppins',
+                                      fontSize: 16,
+                                    ),
                                   ),
                                 );
                               }
 
-                              final filtered =
-                              _applyFilters(snapshot.data!.docs);
+                              final filtered = _applyFilters(
+                                snapshot.data!.docs,
+                              );
 
                               if (filtered.isEmpty) {
                                 return const Center(
                                   child: Text(
                                     "No packages match the filter.",
                                     style: TextStyle(
-                                        fontFamily: 'Poppins', fontSize: 16),
+                                      fontFamily: 'Poppins',
+                                      fontSize: 16,
+                                    ),
                                   ),
                                 );
                               }
 
                               return GridView.builder(
                                 gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 3,
-                                  crossAxisSpacing: 20,
-                                  mainAxisSpacing: 20,
-                                  childAspectRatio: 1.15,
-                                ),
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 3,
+                                      crossAxisSpacing: 20,
+                                      mainAxisSpacing: 20,
+                                      childAspectRatio: 1.15,
+                                    ),
                                 itemCount: filtered.length,
                                 itemBuilder: (context, index) {
                                   final pkg = filtered[index];
@@ -970,8 +1050,7 @@ class _PackageCardState extends State<_PackageCard> {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> images =
-    List<String>.from(widget.data['images'] ?? []);
+    final List<String> images = List<String>.from(widget.data['images'] ?? []);
     final String name = widget.data['name'] ?? '';
     final double price = (widget.data['price'] as num?)?.toDouble() ?? 0.0;
 
@@ -999,54 +1078,57 @@ class _PackageCardState extends State<_PackageCard> {
               borderRadius: BorderRadius.circular(16),
               child: images.isEmpty
                   ? Container(
-                color: widget.lightPink.withOpacity(0.4),
-                child: const Center(
-                  child: Icon(Icons.image_not_supported_outlined,
-                      size: 40, color: Colors.black38),
-                ),
-              )
-                  : Stack(
-                children: [
-                  PageView.builder(
-                    itemCount: images.length,
-                    onPageChanged: (i) =>
-                        setState(() => _currentImage = i),
-                    itemBuilder: (_, index) {
-                      final path = images[index];
-                      return StorageHelper.networkImage(
-                        path,
-                        fit: BoxFit.cover,
-                      );
-                    },
-                  ),
-                  if (images.length > 1)
-                    Positioned(
-                      bottom: 5,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(images.length, (i) {
-                          final active = i == _currentImage;
-                          return AnimatedContainer(
-                            duration:
-                            const Duration(milliseconds: 250),
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 3),
-                            width: active ? 10 : 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? widget.accent
-                                  : Colors.white.withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          );
-                        }),
+                      color: widget.lightPink.withOpacity(0.4),
+                      child: const Center(
+                        child: Icon(
+                          Icons.image_not_supported_outlined,
+                          size: 40,
+                          color: Colors.black38,
+                        ),
                       ),
+                    )
+                  : Stack(
+                      children: [
+                        PageView.builder(
+                          itemCount: images.length,
+                          onPageChanged: (i) =>
+                              setState(() => _currentImage = i),
+                          itemBuilder: (_, index) {
+                            final path = images[index];
+                            return StorageHelper.networkImage(
+                              path,
+                              fit: BoxFit.cover,
+                            );
+                          },
+                        ),
+                        if (images.length > 1)
+                          Positioned(
+                            bottom: 5,
+                            left: 0,
+                            right: 0,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(images.length, (i) {
+                                final active = i == _currentImage;
+                                return AnimatedContainer(
+                                  duration: const Duration(milliseconds: 250),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                  ),
+                                  width: active ? 10 : 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: active
+                                        ? widget.accent
+                                        : Colors.white.withOpacity(0.7),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
-              ),
             ),
           ),
 
@@ -1089,9 +1171,49 @@ class _PackageCardState extends State<_PackageCard> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: widget.onEdit,
-                    icon: Icon(Icons.edit,
-                        size: 16, color: widget.accent),
+                    onPressed: () async {
+                      final booked = await FirebaseFirestore.instance
+                          .collection("bookings")
+                          .where("packageId", isEqualTo: widget.data['id'])
+                          .limit(1)
+                          .get();
+
+                      if (booked.docs.isNotEmpty) {
+                        // show warning dialog
+                        showDialog(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            title: const Text(
+                              "Editing Not Allowed",
+                              style: TextStyle(
+                                fontFamily: "Poppins",
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            content: const Text(
+                              "This package has already been booked by one or more parents. "
+                              "Editing is disabled to avoid conflicts.",
+                              style: TextStyle(fontFamily: "Poppins"),
+                            ),
+                            actions: [
+                              TextButton(
+                                child: const Text(
+                                  "OK",
+                                  style: TextStyle(fontFamily: "Poppins"),
+                                ),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        widget.onEdit();
+                      }
+                    },
+                    icon: Icon(Icons.edit, size: 16, color: widget.accent),
                     label: Text(
                       "Edit",
                       style: TextStyle(
@@ -1100,8 +1222,7 @@ class _PackageCardState extends State<_PackageCard> {
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       minimumSize: const Size(0, 40),
                       side: BorderSide(color: widget.accent),
                       shape: RoundedRectangleBorder(
@@ -1127,8 +1248,7 @@ class _PackageCardState extends State<_PackageCard> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       minimumSize: const Size(0, 40),
                       backgroundColor: Colors.redAccent,
                       shape: RoundedRectangleBorder(
