@@ -25,7 +25,6 @@ class NotificationDetailScreen extends StatelessWidget {
     "General discomfort detected, possibly due to heat, wet diaper, or tight clothing.",
   };
 
-  // Recommended actions
   static const Map<String, String> recommendedActions = {
     "hungry":
     "• Try feeding the baby.\n• Check last feeding time.\n• Observe if crying stops after feeding.",
@@ -36,27 +35,18 @@ class NotificationDetailScreen extends StatelessWidget {
     "belly_pain":
     "• Massage baby's belly gently.\n• Check for gas buildup.\n• Ensure baby is not constipated.\n• Consult a doctor if pain persists.",
     "discomfort":
-    "• Check diaper condition.\n• Adjust baby's clothing.\n• Ensure temperature is comfortable.\n• Remove anything irritating the skin.",
+    "• Check diaper condition.\n• Adjust baby's clothing.\n• Ensure room temperature is comfortable.\n• Remove anything irritating the skin.",
   };
 
-  // Danger descriptions
-  static const Map<String, String> dangerDescriptions = {
+  // Only keep 1 danger type now
+  static const dangerDescriptions = {
     "face_covered":
     "The system detected that the baby's face is covered — this may block breathing.",
-    "unsafe_sleep":
-    "The baby is in a risky sleep position which may cause suffocation.",
-    "fall_risk":
-    "Baby movement suggests possible fall or rollover danger.",
   };
 
-  // Danger action recommendations
-  static const Map<String, String> dangerActions = {
+  static const dangerActions = {
     "face_covered":
-    "⚠ Immediately remove any blanket, pillow, or cloth covering the baby's face.\n⚠ Ensure their airway is clear.\n• Reposition baby safely on their back.",
-    "unsafe_sleep":
-    "• Adjust baby to a safe face-up sleeping position.\n• Remove loose bedding.\n• Ensure crib is free of soft objects.",
-    "fall_risk":
-    "• Move baby away from crib edges.\n• Ensure crib rails are secured.\n• Monitor the baby closely.",
+    "⚠ Immediately remove any blanket, pillow, or cloth covering the baby's face.\n⚠ Ensure the airway is clear.\n• Reposition baby safely on their back.",
   };
 
   @override
@@ -68,9 +58,9 @@ class NotificationDetailScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: true,
         iconTheme: const IconThemeData(color: accent),
         title: Image.asset('assets/images/logo2.png', height: 42),
+        centerTitle: true,
       ),
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance
@@ -99,22 +89,16 @@ class NotificationDetailScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(type),
-                const SizedBox(height: 10),
+                const SizedBox(height: 18),
 
-                Text(
-                  timestamp,
-                  style: const TextStyle(
-                    fontFamily: "Poppins",
-                    color: Colors.black54,
-                    fontSize: 14,
-                  ),
-                ),
+                // TIMESTAMP
+                _softInfoBox(Icons.access_time, "Detected at:", timestamp),
 
                 const SizedBox(height: 20),
 
                 if (imageUrl != null) _imagePreview(imageUrl),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 25),
 
                 if (type == "cry") _cryDetails(reason),
                 if (type == "danger") _dangerDetails(reason),
@@ -128,31 +112,36 @@ class NotificationDetailScreen extends StatelessWidget {
     );
   }
 
-  // HEADER BOX
+  // ---------------- UI COMPONENTS ---------------- //
+
   Widget _header(String type) {
     final bool isDanger = type == "danger";
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDanger ? Colors.red.shade100 : pinkSoft,
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: isDanger
+              ? [Colors.red.shade300, Colors.red.shade100]
+              : [accent.withOpacity(0.8), pinkSoft],
+        ),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: [
           Icon(
             isDanger ? Icons.warning_amber_rounded : Icons.child_care_rounded,
-            size: 30,
-            color: isDanger ? Colors.red : accent,
+            size: 36,
+            color: Colors.white,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Text(
             isDanger ? "Danger Detected" : "Baby is Crying",
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: "Poppins",
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: isDanger ? Colors.red : accent,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
             ),
           ),
         ],
@@ -160,10 +149,44 @@ class NotificationDetailScreen extends StatelessWidget {
     );
   }
 
-  // IMAGE PREVIEW
+  Widget _softInfoBox(IconData icon, String title, String value) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: pinkSoft.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: accent, size: 26),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontFamily: "Poppins",
+                      fontSize: 13,
+                      color: Colors.black54)),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontFamily: "Poppins",
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _imagePreview(String url) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: Image.network(
         url,
         width: double.infinity,
@@ -173,7 +196,8 @@ class NotificationDetailScreen extends StatelessWidget {
     );
   }
 
-  // CRY DETAILS
+  // ------------ CRY DETAILS ------------- //
+
   Widget _cryDetails(String reason) {
     final desc = reasonDescriptions[reason] ?? "Crying detected.";
     final actions = recommendedActions[reason] ?? "• Check your baby.";
@@ -181,75 +205,127 @@ class NotificationDetailScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "Reason: ${reason.replaceAll('_', ' ').toUpperCase()}",
-          style: const TextStyle(
-            fontFamily: "Poppins",
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        Text(desc, style: const TextStyle(fontFamily: "Poppins", fontSize: 14)),
+        _sectionTitle("Cry Analysis"),
+        _infoCard(desc),
 
         const SizedBox(height: 20),
 
-        const Text(
-          "Recommended Actions",
-          style: TextStyle(
-            fontFamily: "Poppins",
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        Text(actions,
-            style: const TextStyle(fontFamily: "Poppins", fontSize: 14)),
+        _sectionTitle("Recommended Actions"),
+        _actionCard(actions),
       ],
     );
   }
 
-  // DANGER DETAILS
+  // ------------ DANGER DETAILS ------------- //
+
   Widget _dangerDetails(String reason) {
-    final desc =
-        dangerDescriptions[reason] ?? "Potential danger detected. Check immediately.";
+    final desc = dangerDescriptions[reason] ??
+        "Potential danger detected. Check immediately.";
     final actions = dangerActions[reason] ??
         "⚠ Ensure the baby is safe and breathing normally.";
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "Danger Type: ${reason.replaceAll('_', ' ').toUpperCase()}",
-          style: const TextStyle(
-            fontFamily: "Poppins",
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.red,
-          ),
-        ),
+        _sectionTitle("Danger Type"),
+        _dangerLabel(reason),
 
-        const SizedBox(height: 10),
-        Text(desc, style: const TextStyle(fontFamily: "Poppins", fontSize: 14)),
+        const SizedBox(height: 12),
+        _infoCard(desc),
 
         const SizedBox(height: 20),
-        const Text(
-          "Immediate Steps",
-          style: TextStyle(
-            fontFamily: "Poppins",
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.red,
-          ),
-        ),
-
-        const SizedBox(height: 10),
-        Text(actions,
-            style: const TextStyle(fontFamily: "Poppins", fontSize: 14)),
+        _sectionTitle("Immediate Steps"),
+        _dangerActionCard(actions),
       ],
+    );
+  }
+
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: "Poppins",
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _dangerLabel(String reason) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Text(
+        reason.replaceAll('_', ' ').toUpperCase(),
+        style: const TextStyle(
+          fontFamily: "Poppins",
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.red,
+        ),
+      ),
+    );
+  }
+
+  Widget _infoCard(String text) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: pinkSoft.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: "Poppins",
+          fontSize: 14,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+
+  Widget _actionCard(String text) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: accent.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: "Poppins",
+          fontSize: 14,
+          height: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _dangerActionCard(String text) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.red.shade300),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: "Poppins",
+          fontSize: 14,
+          height: 1.5,
+          color: Colors.red,
+        ),
+      ),
     );
   }
 }

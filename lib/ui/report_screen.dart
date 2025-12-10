@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'danger_report_screen.dart';
 import 'logout_success_screen.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -540,10 +541,28 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
           ),
 
+          // Danger Report
+          ListTile(
+            leading: const Icon(Icons.report, color: accent),
+            title: const Text(
+              "Danger Report",
+              style: TextStyle(fontFamily: "Poppins"),
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DangerReportScreen(),
+                ),
+              );
+            },
+          ),
+
+          const Divider(),
+
           ListTile(
             leading: const Icon(Icons.logout, color: accent),
-            title:
-            const Text("Logout", style: TextStyle(fontFamily: "Poppins")),
+            title: const Text("Logout", style: TextStyle(fontFamily: "Poppins")),
             onTap: () async {
               await FirebaseAuth.instance.signOut();
               Navigator.pushAndRemoveUntil(

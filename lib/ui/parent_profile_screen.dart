@@ -41,6 +41,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   Future<void> _loadParentData() async {
     try {
       final doc = await _firestore.collection('parent').doc(parentUid).get();
+
       if (doc.exists) {
         final data = doc.data()!;
         setState(() {
@@ -49,7 +50,11 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
           parentPhone = data['phone'] ?? "-";
           parentAddress = data['address'] ?? "-";
           joinedSince = data['created_at'] != null
-              ? (data['created_at'] as Timestamp).toDate().toLocal().toString().split(' ')[0]
+              ? (data['created_at'] as Timestamp)
+              .toDate()
+              .toLocal()
+              .toString()
+              .split(' ')[0]
               : "Unknown";
           profileImageUrl = data['profileImageUrl'];
         });
@@ -65,6 +70,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
       if (picked != null) {
         final file = File(picked.path);
         setState(() => profileImage = file);
+
         await _uploadProfileImage(file);
       }
     } catch (e) {
@@ -72,12 +78,25 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     }
   }
 
+  // ================================================
+  // ✔ FIXED UPLOAD PATH FOR STORAGE RULES
+  // ================================================
   Future<void> _uploadProfileImage(File file) async {
     try {
-      final ref = _storage.ref().child('profile_images/$parentUid.jpg');
+      // Upload inside folder: profile_images/<uid>/profile.jpg
+      final ref =
+      _storage.ref().child('profile_images/$parentUid/profile.jpg');
+
       await ref.putFile(file);
+
       final url = await ref.getDownloadURL();
-      await _firestore.collection('parent').doc(parentUid).update({'profileImageUrl': url});
+
+      // Update Firestore with final image URL
+      await _firestore
+          .collection('parent')
+          .doc(parentUid)
+          .update({'profileImageUrl': url});
+
       setState(() => profileImageUrl = url);
     } catch (e) {
       print('Error uploading profile image: $e');
@@ -86,7 +105,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
 
   Future<void> _editField(String label, String currentValue, String fieldKey) async {
     final controller = TextEditingController(text: currentValue);
-    final _formKey = GlobalKey<FormState>();
+    final formKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
@@ -96,54 +115,45 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         title: Text(
           "Edit $label",
           style: const TextStyle(
-              fontFamily: 'Poppins', fontWeight: FontWeight.w600, color: accent),
+            fontFamily: 'Poppins',
+            fontWeight: FontWeight.w600,
+            color: accent,
+          ),
         ),
         content: Form(
-          key: _formKey,
+          key: formKey,
           child: TextFormField(
             controller: controller,
             autofocus: true,
-            keyboardType: fieldKey == 'email'
-                ? TextInputType.emailAddress
-                : TextInputType.text,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) return '$label cannot be empty';
-              if (fieldKey == 'email' &&
-                  !RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$").hasMatch(value.trim())) {
-                return 'Enter a valid email';
-              }
-              return null;
-            },
+            validator: (v) =>
+            v!.trim().isEmpty ? "$label cannot be empty" : null,
             decoration: InputDecoration(
-              hintText: "Enter new $label",
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              hintText: "Enter new $label",
             ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "Cancel",
-              style: TextStyle(color: Colors.black54, fontFamily: 'Poppins'),
-            ),
+            child: const Text("Cancel"),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: accent),
+            child: const Text("Save", style: TextStyle(color: Colors.white)),
             onPressed: () async {
-              if (_formKey.currentState!.validate()) {
-                final newValue = controller.text.trim();
-                await _firestore.collection('parent').doc(parentUid).update({fieldKey: newValue});
+              if (formKey.currentState!.validate()) {
+                await _firestore
+                    .collection('parent')
+                    .doc(parentUid)
+                    .update({fieldKey: controller.text.trim()});
                 _loadParentData();
                 Navigator.pop(context);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: accent),
-            child: const Text(
-              "Save",
-              style: TextStyle(color: Colors.white, fontFamily: 'Poppins'),
-            ),
           ),
         ],
       ),
@@ -151,10 +161,10 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   }
 
   Future<void> _changePassword() async {
-    final currentController = TextEditingController();
-    final newController = TextEditingController();
-    final confirmController = TextEditingController();
-    final _formKey = GlobalKey<FormState>();
+    final current = TextEditingController();
+    final newPass = TextEditingController();
+    final confirm = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
@@ -164,15 +174,18 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         title: const Text(
           "Change Password",
           style: TextStyle(
-              fontFamily: 'Poppins', color: accent, fontWeight: FontWeight.w600),
+            fontFamily: 'Poppins',
+            color: accent,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         content: Form(
-          key: _formKey,
+          key: formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
-                controller: currentController,
+                controller: current,
                 obscureText: true,
                 validator: (v) =>
                 v!.isEmpty ? "Enter current password" : null,
@@ -180,7 +193,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
               ),
               const SizedBox(height: 12),
               TextFormField(
-                controller: newController,
+                controller: newPass,
                 obscureText: true,
                 validator: (v) =>
                 v!.length < 6 ? "Min 6 characters" : null,
@@ -188,10 +201,10 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
               ),
               const SizedBox(height: 12),
               TextFormField(
-                controller: confirmController,
+                controller: confirm,
                 obscureText: true,
                 validator: (v) =>
-                v != newController.text ? "Passwords do not match" : null,
+                v != newPass.text ? "Passwords do not match" : null,
                 decoration: _inputDecoration("Confirm Password"),
               ),
             ],
@@ -199,69 +212,66 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         ),
         actions: [
           TextButton(
+            child: const Text("Cancel"),
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel",
-                style: TextStyle(fontFamily: 'Poppins', color: Colors.black54)),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: accent),
+            child: const Text("Save", style: TextStyle(color: Colors.white)),
             onPressed: () async {
-              if (_formKey.currentState!.validate()) {
+              if (formKey.currentState!.validate()) {
                 try {
                   User user = FirebaseAuth.instance.currentUser!;
 
                   final cred = EmailAuthProvider.credential(
                     email: user.email!,
-                    password: currentController.text.trim(),
+                    password: current.text.trim(),
                   );
 
                   await user.reauthenticateWithCredential(cred);
-                  await user.updatePassword(newController.text.trim());
+                  await user.updatePassword(newPass.text.trim());
 
                   Navigator.pop(context);
-
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      content: const Text(
-                        "Password updated successfully!",
-                        style: TextStyle(fontFamily: 'Poppins'),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text("OK"),
-                        )
-                      ],
-                    ),
-                  );
+                  _showSuccess("Password updated successfully!");
                 } catch (e) {
                   Navigator.pop(context);
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      content: const Text(
-                        "Current password is incorrect.",
-                        style: TextStyle(fontFamily: 'Poppins'),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text("OK"),
-                        )
-                      ],
-                    ),
-                  );
+                  _showError("Current password is incorrect");
                 }
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: accent),
-            child: const Text(
-              "Save",
-              style: TextStyle(color: Colors.white, fontFamily: 'Poppins'),
-            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _showSuccess(String msg) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text(msg, style: const TextStyle(fontFamily: 'Poppins')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showError(String msg) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text(msg, style: const TextStyle(fontFamily: 'Poppins')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          )
         ],
       ),
     );
@@ -270,7 +280,6 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontFamily: 'Poppins'),
       filled: true,
       fillColor: Colors.white,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -278,16 +287,12 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
   }
 
   Future<void> _logout() async {
-    try {
-      await FirebaseAuth.instance.signOut();
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const LogoutSuccessScreen()),
-            (route) => false,
-      );
-    } catch (e) {
-      print('Error signing out: $e');
-    }
+    await FirebaseAuth.instance.signOut();
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LogoutSuccessScreen()),
+          (route) => false,
+    );
   }
 
   @override
@@ -305,7 +310,9 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            // Profile Picture
+            // ===============================
+            // Profile Picture Section
+            // ===============================
             GestureDetector(
               onTap: _pickImage,
               child: CircleAvatar(
@@ -313,30 +320,31 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
                 backgroundColor: pinkSoft,
                 backgroundImage: profileImage != null
                     ? FileImage(profileImage!)
-                    : profileImageUrl != null
-                    ? NetworkImage(profileImageUrl!) as ImageProvider
-                    : null,
+                    : (profileImageUrl != null
+                    ? NetworkImage(profileImageUrl!)
+                    : null),
                 child: profileImage == null && profileImageUrl == null
                     ? const Icon(Icons.person, color: accent, size: 60)
                     : null,
               ),
             ),
+
             const SizedBox(height: 16),
 
-            // Personal Info Card
+            // =====================================
+            // Info Cards
+            // =====================================
+
             _infoCard(
               children: [
                 _editableInfoRow("Username", parentName, "username"),
                 _editableInfoRow("Email", parentEmail, "email"),
-
-                // 🔥 NEW: Change Password Row
                 _passwordRow(),
               ],
             ),
 
             const SizedBox(height: 20),
 
-            // Contact Info Card
             _infoCard(
               children: [
                 _editableInfoRow("Phone Number", parentPhone, "phone"),
@@ -348,27 +356,23 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
 
             const SizedBox(height: 40),
 
-            // Logout Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _logout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: pinkSoft,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    side: const BorderSide(color: Colors.black26, width: 1.2),
-                  ),
-                  elevation: 3,
+            ElevatedButton(
+              onPressed: _logout,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: pinkSoft,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  side: const BorderSide(color: Colors.black26),
                 ),
-                child: const Text(
-                  'Logout',
-                  style: TextStyle(
-                      fontFamily: 'Poppins',
-                      color: Colors.black,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600),
+              ),
+              child: const Text(
+                'Logout',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -378,18 +382,18 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
     );
   }
 
+  // =================================================
+  // UI Helper Builders
+  // =================================================
+
   Widget _infoCard({required List<Widget> children}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          )
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 8),
         ],
       ),
       child: Column(children: children),
@@ -419,10 +423,11 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
               child: Text(
                 value,
                 style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    color: accent,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 14),
+                  fontFamily: 'Poppins',
+                  color: accent,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
                 textAlign: TextAlign.right,
               ),
             ),
@@ -457,10 +462,11 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
               child: Text(
                 "●●●●●●●",
                 style: TextStyle(
-                    fontFamily: 'Poppins',
-                    color: accent,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 14),
+                  fontFamily: 'Poppins',
+                  color: accent,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
                 textAlign: TextAlign.right,
               ),
             ),
@@ -493,10 +499,11 @@ class _ParentProfileScreenState extends State<ParentProfileScreen> {
             child: Text(
               value,
               style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  color: accent,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14),
+                fontFamily: 'Poppins',
+                color: accent,
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
               textAlign: TextAlign.right,
             ),
           ),

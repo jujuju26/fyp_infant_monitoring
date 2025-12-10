@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class MealPlannerScreen extends StatefulWidget {
-  final String bookingId; // 🔹 link to specific booking
+  final String bookingId; // link to specific booking
 
   const MealPlannerScreen({
     Key? key,
@@ -26,22 +26,26 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
   bool _isLoading = false;
   bool _isSaving = false;
 
-  // Booking date range (from booking check-in/out)
+  // Booking date range
   DateTime? _bookingStart;
   DateTime? _bookingEnd;
 
-  // 3 meal controllers
-  final TextEditingController _breakfastTitle = TextEditingController();
+  // Meal Options from Firestore
+  Map<String, List<String>> mealOptions = {
+    "breakfast": [],
+    "lunch": [],
+    "dinner": [],
+  };
+
+  // Selected meal values
+  String? _selectedBreakfast;
+  String? _selectedLunch;
+  String? _selectedDinner;
+
+  // Notes controllers
   final TextEditingController _breakfastNotes = TextEditingController();
-  final TextEditingController _breakfastCalories = TextEditingController();
-
-  final TextEditingController _lunchTitle = TextEditingController();
   final TextEditingController _lunchNotes = TextEditingController();
-  final TextEditingController _lunchCalories = TextEditingController();
-
-  final TextEditingController _dinnerTitle = TextEditingController();
   final TextEditingController _dinnerNotes = TextEditingController();
-  final TextEditingController _dinnerCalories = TextEditingController();
 
   // Staff status
   Map<String, String> _status = {
@@ -53,53 +57,37 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
   @override
   void initState() {
     super.initState();
-    _initBookingAndMeal();
+    _initPlanner();
   }
 
   @override
   void dispose() {
-    _breakfastTitle.dispose();
     _breakfastNotes.dispose();
-    _breakfastCalories.dispose();
-    _lunchTitle.dispose();
     _lunchNotes.dispose();
-    _lunchCalories.dispose();
-    _dinnerTitle.dispose();
     _dinnerNotes.dispose();
-    _dinnerCalories.dispose();
     super.dispose();
   }
 
-  // ------------------------------------------------
+  // -------------------------------------------------------
   // Helpers
-  // ------------------------------------------------
-
+  // -------------------------------------------------------
   String _key(DateTime d) => DateFormat("yyyy-MM-dd").format(d);
-
   String _formatDate(DateTime d) =>
       DateFormat("EEEE, d MMMM yyyy").format(d);
 
-  DateTime _parseDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is String) {
-      final parsed = DateTime.tryParse(value);
-      if (parsed != null) return parsed;
-    }
+  DateTime _parseDate(dynamic val) {
+    if (val is Timestamp) return val.toDate();
+    if (val is String) return DateTime.tryParse(val) ?? DateTime.now();
     return DateTime.now();
   }
 
   void _clearFields() {
-    _breakfastTitle.clear();
+    _selectedBreakfast = null;
+    _selectedLunch = null;
+    _selectedDinner = null;
     _breakfastNotes.clear();
-    _breakfastCalories.clear();
-
-    _lunchTitle.clear();
     _lunchNotes.clear();
-    _lunchCalories.clear();
-
-    _dinnerTitle.clear();
     _dinnerNotes.clear();
-    _dinnerCalories.clear();
 
     _status = {
       "breakfast": "PENDING",
@@ -108,70 +96,127 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     };
   }
 
-  // ------------------------------------------------
-  // Init: load booking dates + meal plan
-  // ------------------------------------------------
-  Future<void> _initBookingAndMeal() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
+  // -------------------------------------------------------
+  // MAIN INIT
+  // -------------------------------------------------------
+  Future<void> _initPlanner() async {
     setState(() => _isLoading = true);
 
     try {
-      // 1) Load booking to get check-in/out range
-      final bookingDoc = await _firestore
-          .collection("parent")
-          .doc(user.uid)
-          .collection("bookings")
-          .doc(widget.bookingId)
-          .get();
-
-      if (bookingDoc.exists) {
-        final data = bookingDoc.data()!;
-        final checkIn = _parseDate(data["checkInDate"]);
-        final checkOut = _parseDate(data["checkOutDate"]);
-
-        _bookingStart = checkIn;
-        _bookingEnd = checkOut;
-
-        // Clamp selected date into booking range
-        DateTime today = DateTime.now();
-        DateTime selected = today;
-
-        if (selected.isBefore(checkIn)) selected = checkIn;
-        if (selected.isAfter(checkOut)) selected = checkOut;
-
-        _selectedDate = selected;
-      }
-
-      // 2) Load meal plan for that date
+      await _loadBookingRange();
+      await _loadMealOptions();
       await _loadMealPlan();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to load booking info: $e")),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error initializing: $e")));
     }
 
     setState(() => _isLoading = false);
   }
 
-  // ------------------------------------------------
-  // Date picker
-  // ------------------------------------------------
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
+  // -------------------------------------------------------
+  // Booking date range (check-in/out)
+  // -------------------------------------------------------
+  Future<void> _loadBookingRange() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-    // If booking has range, constrain date picker to that
-    final firstDate = _bookingStart ?? now.subtract(const Duration(days: 5));
-    final lastDate = _bookingEnd ?? now.add(const Duration(days: 365));
+    final snap = await _firestore
+        .collection("parent")
+        .doc(user.uid)
+        .collection("bookings")
+        .doc(widget.bookingId)
+        .get();
+
+    if (!snap.exists) return;
+
+    final data = snap.data()!;
+    final checkIn = _parseDate(data["checkInDate"]);
+    final checkOut = _parseDate(data["checkOutDate"]);
+
+    _bookingStart = checkIn;
+    _bookingEnd = checkOut;
+
+    // Clamp selected date inside booking range
+    DateTime today = DateTime.now();
+    if (today.isBefore(checkIn)) today = checkIn;
+    if (today.isAfter(checkOut)) today = checkOut;
+
+    _selectedDate = today;
+  }
+
+  // -------------------------------------------------------
+  // Load meal options from root collection
+  // -------------------------------------------------------
+  Future<void> _loadMealOptions() async {
+    final snap = await _firestore.collection("meal_options").get();
+
+    if (snap.docs.isNotEmpty) {
+      final data = snap.docs.first.data();
+
+      mealOptions["breakfast"] =
+      List<String>.from(data["breakfast"] ?? []);
+
+      mealOptions["lunch"] =
+      List<String>.from(data["lunch"] ?? []);
+
+      mealOptions["dinner"] =
+      List<String>.from(data["dinner"] ?? []);
+    }
+  }
+
+  // -------------------------------------------------------
+  // Load selected day's meal plan
+  // -------------------------------------------------------
+  Future<void> _loadMealPlan() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    _clearFields();
+    final dateKey = _key(_selectedDate);
+
+    final snap = await _firestore
+        .collection("parent")
+        .doc(user.uid)
+        .collection("bookings")
+        .doc(widget.bookingId)
+        .collection("mealPlans")
+        .doc(dateKey)
+        .get();
+
+    if (!snap.exists) return;
+
+    final data = snap.data()!;
+    final meals = data["meals"] ?? {};
+    final status = data["status"] ?? {};
+
+    _selectedBreakfast = meals["breakfast"]?["title"];
+    _breakfastNotes.text = meals["breakfast"]?["notes"] ?? "";
+
+    _selectedLunch = meals["lunch"]?["title"];
+    _lunchNotes.text = meals["lunch"]?["notes"] ?? "";
+
+    _selectedDinner = meals["dinner"]?["title"];
+    _dinnerNotes.text = meals["dinner"]?["notes"] ?? "";
+
+    _status = {
+      "breakfast": status["breakfast"] ?? "PENDING",
+      "lunch": status["lunch"] ?? "PENDING",
+      "dinner": status["dinner"] ?? "PENDING",
+    };
+  }
+
+  // -------------------------------------------------------
+  // Date Picker
+  // -------------------------------------------------------
+  Future<void> _pickDate() async {
+    if (_bookingStart == null || _bookingEnd == null) return;
 
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate.isBefore(firstDate)
-          ? firstDate
-          : (_selectedDate.isAfter(lastDate) ? lastDate : _selectedDate),
-      firstDate: firstDate,
-      lastDate: lastDate,
+      initialDate: _selectedDate,
+      firstDate: _bookingStart!,
+      lastDate: _bookingEnd!,
     );
 
     if (picked != null) {
@@ -180,72 +225,9 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     }
   }
 
-  // ------------------------------------------------
-  // Load meal plan for selected date
-  // parent/{uid}/bookings/{bookingId}/mealPlans/{dateKey}
-  // ------------------------------------------------
-  Future<void> _loadMealPlan() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      _clearFields();
-      final dateKey = _key(_selectedDate);
-
-      final doc = await _firestore
-          .collection("parent")
-          .doc(user.uid)
-          .collection("bookings")
-          .doc(widget.bookingId)
-          .collection("mealPlans")
-          .doc(dateKey)
-          .get();
-
-      if (doc.exists) {
-        final data = doc.data()!;
-        final meals = data["meals"] ?? {};
-        final status = data["status"] ?? {};
-
-        // Breakfast
-        final b = meals["breakfast"] ?? {};
-        _breakfastTitle.text = b["title"] ?? "";
-        _breakfastNotes.text = b["notes"] ?? "";
-        _breakfastCalories.text = b["calories"]?.toString() ?? "";
-
-        // Lunch
-        final l = meals["lunch"] ?? {};
-        _lunchTitle.text = l["title"] ?? "";
-        _lunchNotes.text = l["notes"] ?? "";
-        _lunchCalories.text = l["calories"]?.toString() ?? "";
-
-        // Dinner
-        final d = meals["dinner"] ?? {};
-        _dinnerTitle.text = d["title"] ?? "";
-        _dinnerNotes.text = d["notes"] ?? "";
-        _dinnerCalories.text = d["calories"]?.toString() ?? "";
-
-        _status = {
-          "breakfast": status["breakfast"] ?? "PENDING",
-          "lunch": status["lunch"] ?? "PENDING",
-          "dinner": status["dinner"] ?? "PENDING",
-        };
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to load meal plan: $e")),
-      );
-    }
-
-    setState(() => _isLoading = false);
-  }
-
-  // ------------------------------------------------
-  // Save meal plan
-  // parent/{uid}/bookings/{bookingId}/mealPlans/{dateKey}
-  // + mirror to root: mealPlans/{bookingId}_{dateKey}
-  // ------------------------------------------------
+  // -------------------------------------------------------
+  // Save Meal Plan
+  // -------------------------------------------------------
   Future<void> _saveMealPlan() async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -253,55 +235,45 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     setState(() => _isSaving = true);
 
     final dateKey = _key(_selectedDate);
+    Map<String, dynamic> meals = {};
 
-    final meals = <String, dynamic>{};
-
-    void addMeal(
-        String key,
-        TextEditingController title,
-        TextEditingController notes,
-        TextEditingController calories,
-        ) {
-      if (title.text.trim().isNotEmpty ||
-          notes.text.trim().isNotEmpty ||
-          calories.text.trim().isNotEmpty) {
+    void addMeal(String key, String? selectedMeal, TextEditingController notes) {
+      if (selectedMeal != null) {
         meals[key] = {
-          "title": title.text.trim(),
+          "title": selectedMeal,
           "notes": notes.text.trim(),
-          "calories": double.tryParse(calories.text.trim()),
         };
       }
     }
 
-    addMeal("breakfast", _breakfastTitle, _breakfastNotes, _breakfastCalories);
-    addMeal("lunch", _lunchTitle, _lunchNotes, _lunchCalories);
-    addMeal("dinner", _dinnerTitle, _dinnerNotes, _dinnerCalories);
+    addMeal("breakfast", _selectedBreakfast, _breakfastNotes);
+    addMeal("lunch", _selectedLunch, _lunchNotes);
+    addMeal("dinner", _selectedDinner, _dinnerNotes);
 
     if (meals.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Enter at least one meal.")),
+        const SnackBar(content: Text("Please select at least one meal")),
       );
       setState(() => _isSaving = false);
       return;
     }
 
     final mealStatus = {
-      "breakfast": _status["breakfast"] ?? "PENDING",
-      "lunch": _status["lunch"] ?? "PENDING",
-      "dinner": _status["dinner"] ?? "PENDING",
+      "breakfast": _status["breakfast"],
+      "lunch": _status["lunch"],
+      "dinner": _status["dinner"],
     };
 
     try {
-      // Save under booking (for parent)
-      final parentDoc = _firestore
+      // Save under parent
+      await _firestore
           .collection("parent")
           .doc(user.uid)
           .collection("bookings")
           .doc(widget.bookingId)
           .collection("mealPlans")
-          .doc(dateKey);
-
-      await parentDoc.set({
+          .doc(dateKey)
+          .set({
         "date": dateKey,
         "meals": meals,
         "status": mealStatus,
@@ -309,11 +281,10 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
       }, SetOptions(merge: true));
 
       // Save under root (for staff)
-      final rootDoc = _firestore
+      await _firestore
           .collection("mealPlans")
-          .doc("${widget.bookingId}_$dateKey");
-
-      await rootDoc.set({
+          .doc("${widget.bookingId}_$dateKey")
+          .set({
         "parentId": user.uid,
         "bookingId": widget.bookingId,
         "date": dateKey,
@@ -323,20 +294,19 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
       }, SetOptions(merge: true));
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Meal plan saved.")),
+        const SnackBar(content: Text("Meal plan saved successfully!")),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Save failed: $e")),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Save failed: $e")));
     }
 
     setState(() => _isSaving = false);
   }
 
-  // ------------------------------------------------
+  // -------------------------------------------------------
   // UI BUILD
-  // ------------------------------------------------
+  // -------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -345,10 +315,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
         backgroundColor: Colors.white,
         foregroundColor: accent,
         elevation: 0,
-        title: const Text(
-          "Meal Planner",
-          style: TextStyle(fontFamily: "Poppins"),
-        ),
+        title: const Text("Meal Planner", style: TextStyle(fontFamily: "Poppins")),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: accent))
@@ -358,29 +325,38 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
           children: [
             _buildDateSelector(),
             const SizedBox(height: 20),
+
             _buildMealCard(
               label: "Breakfast",
-              status: _status["breakfast"]!,
-              titleCtrl: _breakfastTitle,
+              selectedMeal: _selectedBreakfast,
+              mealList: mealOptions["breakfast"]!,
               notesCtrl: _breakfastNotes,
-              calCtrl: _breakfastCalories,
+              status: _status["breakfast"]!,
+              onChanged: (v) => setState(() => _selectedBreakfast = v),
             ),
+
             const SizedBox(height: 16),
+
             _buildMealCard(
               label: "Lunch",
-              status: _status["lunch"]!,
-              titleCtrl: _lunchTitle,
+              selectedMeal: _selectedLunch,
+              mealList: mealOptions["lunch"]!,
               notesCtrl: _lunchNotes,
-              calCtrl: _lunchCalories,
+              status: _status["lunch"]!,
+              onChanged: (v) => setState(() => _selectedLunch = v),
             ),
+
             const SizedBox(height: 16),
+
             _buildMealCard(
               label: "Dinner",
-              status: _status["dinner"]!,
-              titleCtrl: _dinnerTitle,
+              selectedMeal: _selectedDinner,
+              mealList: mealOptions["dinner"]!,
               notesCtrl: _dinnerNotes,
-              calCtrl: _dinnerCalories,
+              status: _status["dinner"]!,
+              onChanged: (v) => setState(() => _selectedDinner = v),
             ),
+
             const SizedBox(height: 24),
             _buildSaveButton(),
           ],
@@ -389,76 +365,48 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  // ------------------------------------------------
+  // -------------------------------------------------------
   // Date Selector Header
-  // ------------------------------------------------
+  // -------------------------------------------------------
   Widget _buildDateSelector() {
-    String rangeText = "";
-    if (_bookingStart != null && _bookingEnd != null) {
-      rangeText =
-      "Confinement stay: ${DateFormat('d MMM').format(_bookingStart!)} - ${DateFormat('d MMM yyyy').format(_bookingEnd!)}";
-    }
-
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6),
-        ],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(Icons.calendar_today_outlined, color: accent),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _formatDate(_selectedDate),
-                  style: const TextStyle(
+          const Icon(Icons.calendar_today_outlined, color: accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(_formatDate(_selectedDate),
+                style: const TextStyle(
                     fontFamily: "Poppins",
                     fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: _pickDate,
-                child: const Text(
-                  "Change",
-                  style: TextStyle(color: accent, fontFamily: "Poppins"),
-                ),
-              ),
-            ],
+                    fontSize: 15)),
           ),
-          if (rangeText.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              rangeText,
-              style: const TextStyle(
-                fontFamily: "Poppins",
-                fontSize: 12,
-                color: Colors.black54,
-              ),
-            ),
-          ],
+          TextButton(
+            onPressed: _pickDate,
+            child: const Text("Change",
+                style: TextStyle(color: accent, fontFamily: "Poppins")),
+          ),
         ],
       ),
     );
   }
 
-  // ------------------------------------------------
-  // Meal Card Widget
-  // ------------------------------------------------
+  // -------------------------------------------------------
+  // Meal Card
+  // -------------------------------------------------------
   Widget _buildMealCard({
     required String label,
-    required String status,
-    required TextEditingController titleCtrl,
+    required String? selectedMeal,
+    required List<String> mealList,
     required TextEditingController notesCtrl,
-    required TextEditingController calCtrl,
+    required String status,
+    required Function(String?) onChanged,
   }) {
     Color statusColor = Colors.grey;
     if (status == "PREPARING") statusColor = Colors.orange;
@@ -470,26 +418,21 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: lightPink),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6),
-        ],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
+          // Title + Status Badge
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontFamily: "Poppins",
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: accent,
-                ),
-              ),
+              Text(label,
+                  style: const TextStyle(
+                      fontFamily: "Poppins",
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: accent)),
               Container(
                 padding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -501,11 +444,10 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                 child: Text(
                   status,
                   style: TextStyle(
-                    fontFamily: "Poppins",
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: statusColor,
-                  ),
+                      fontFamily: "Poppins",
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor),
                 ),
               ),
             ],
@@ -513,43 +455,36 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
 
           const SizedBox(height: 10),
 
-          TextField(
-            controller: titleCtrl,
-            decoration: _inputDecoration("Meal name (e.g. porridge)"),
+          // Dropdown Meal Selector
+          DropdownButtonFormField<String>(
+            value: selectedMeal,
+            items: mealList
+                .map((meal) => DropdownMenuItem(
+              value: meal,
+              child:
+              Text(meal, style: const TextStyle(fontFamily: "Poppins")),
+            ))
+                .toList(),
+            onChanged: onChanged,
+            decoration: _inputDecoration("Select $label meal"),
           ),
-          const SizedBox(height: 8),
+
+          const SizedBox(height: 10),
+
+          // Notes
           TextField(
             controller: notesCtrl,
             maxLines: 2,
-            decoration: _inputDecoration("Notes / special requests"),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: calCtrl,
-            keyboardType:
-            const TextInputType.numberWithOptions(decimal: true),
-            decoration: _inputDecoration("Estimated calories"),
+            decoration: _inputDecoration("Notes / special request"),
           ),
         ],
       ),
     );
   }
 
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      filled: true,
-      fillColor: const Color(0xFFFDF5F6),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-    );
-  }
-
-  // ------------------------------------------------
-  // Save button
-  // ------------------------------------------------
+  // -------------------------------------------------------
+  // Save Button
+  // -------------------------------------------------------
   Widget _buildSaveButton() {
     return SizedBox(
       width: double.infinity,
@@ -561,7 +496,6 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
-          elevation: 2,
         ),
         onPressed: _isSaving ? null : _saveMealPlan,
         child: _isSaving
@@ -574,6 +508,19 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
+      ),
+    );
+  }
+
+  // Text Input Decoration
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xFFFDF5F6),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
       ),
     );
   }

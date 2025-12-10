@@ -3,7 +3,6 @@ import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibration/vibration.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -25,12 +24,19 @@ class _NotificationSettingsScreenState
   bool popupEnabled = true;
   double volume = 0.7;
 
-  // Only crying sound now
+  // Crying sounds
   String cryingSound = "baby_cry_alert.wav";
-
   final List<String> cryingSounds = [
     "baby_cry_alert.wav",
     "default_notification.wav",
+  ];
+
+  // DANGER alert sounds
+  bool dangerSoundEnabled = true;
+  String dangerSound = "danger_alert.wav";
+  final List<String> dangerSounds = [
+    "danger_alert.wav",
+    "alarm.wav",
   ];
 
   @override
@@ -47,7 +53,7 @@ class _NotificationSettingsScreenState
         NotificationChannel(
           channelKey: 'baby_alert_channel',
           channelName: 'Baby Alerts',
-          channelDescription: 'Alerts for baby crying',
+          channelDescription: 'Alerts for baby crying and danger detection',
           importance: NotificationImportance.Max,
           playSound: false,
           enableVibration: false,
@@ -60,6 +66,9 @@ class _NotificationSettingsScreenState
     }
   }
 
+  // ============================
+  // LOAD SETTINGS
+  // ============================
   Future<void> _loadSettings() async {
     final doc = await FirebaseFirestore.instance
         .collection('parent')
@@ -76,12 +85,19 @@ class _NotificationSettingsScreenState
         popupEnabled = data['popupEnabled'] ?? true;
         volume = (data['volume'] ?? 0.7).toDouble();
         cryingSound = data['cryingSound'] ?? "baby_cry_alert.wav";
+
+        // NEW danger fields
+        dangerSoundEnabled = data['dangerSoundEnabled'] ?? true;
+        dangerSound = data['dangerSound'] ?? "danger_alert.wav";
       });
     }
 
     _player.setVolume(volume);
   }
 
+  // ============================
+  // SAVE SETTINGS
+  // ============================
   Future<void> _saveSettings() async {
     await FirebaseFirestore.instance
         .collection('parent')
@@ -94,10 +110,22 @@ class _NotificationSettingsScreenState
       'popupEnabled': popupEnabled,
       'volume': volume,
       'cryingSound': cryingSound,
+
+      // NEW danger alert settings
+      'dangerSoundEnabled': dangerSoundEnabled,
+      'dangerSound': dangerSound,
     });
   }
 
+  // ============================
+  // PREVIEW SOUND PLAYBACK
+  // ============================
   Future<void> playPreview(String file) async {
+    await _player.stop();
+    await _player.play(AssetSource("sounds/$file"), volume: volume);
+  }
+
+  Future<void> playDangerPreview(String file) async {
     await _player.stop();
     await _player.play(AssetSource("sounds/$file"), volume: volume);
   }
@@ -185,16 +213,47 @@ class _NotificationSettingsScreenState
               ),
             ),
 
+            // ============================
+            // CRYING SOUND SECTION
+            // ============================
             const SizedBox(height: 25),
-            _sectionTitle("Crying Sound"),
+            _sectionTitle("Crying Alert Sound"),
 
             _soundPicker(
+              title: "Select Crying Sound",
               currentSound: cryingSound,
               soundList: cryingSounds,
               onChanged: (v) {
                 setState(() => cryingSound = v!);
                 _saveSettings();
               },
+              onPreview: () => playPreview(cryingSound),
+            ),
+
+            // ============================
+            // DANGER SOUND SECTION
+            // ============================
+            const SizedBox(height: 25),
+            _sectionTitle("Danger Alert Sound"),
+
+            _switchTile(
+              title: "Enable Danger Alert Sound",
+              value: dangerSoundEnabled,
+              onChanged: (v) {
+                setState(() => dangerSoundEnabled = v);
+                _saveSettings();
+              },
+            ),
+
+            _soundPicker(
+              title: "Select Danger Sound",
+              currentSound: dangerSound,
+              soundList: dangerSounds,
+              onChanged: (v) {
+                setState(() => dangerSound = v!);
+                _saveSettings();
+              },
+              onPreview: () => playDangerPreview(dangerSound),
             ),
 
             const SizedBox(height: 25),
@@ -203,6 +262,10 @@ class _NotificationSettingsScreenState
       ),
     );
   }
+
+  // ============================
+  // UI HELPERS
+  // ============================
 
   Widget _sectionTitle(String text) {
     return Padding(
@@ -250,9 +313,11 @@ class _NotificationSettingsScreenState
   }
 
   Widget _soundPicker({
+    required String title,
     required String currentSound,
     required List<String> soundList,
     required Function(String?) onChanged,
+    required Function() onPreview,
   }) {
     return Container(
       padding: const EdgeInsets.all(18),
@@ -261,19 +326,17 @@ class _NotificationSettingsScreenState
         children: [
           DropdownButtonFormField<String>(
             value: currentSound,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              labelText: "Select Sound",
-              labelStyle: TextStyle(fontFamily: "Poppins"),
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              labelText: title,
+              labelStyle: const TextStyle(fontFamily: "Poppins"),
             ),
             items: soundList
-                .map(
-                  (s) => DropdownMenuItem(
-                value: s,
-                child:
-                Text(s, style: const TextStyle(fontFamily: "Poppins")),
-              ),
-            )
+                .map((s) => DropdownMenuItem(
+              value: s,
+              child: Text(s,
+                  style: const TextStyle(fontFamily: "Poppins")),
+            ))
                 .toList(),
             onChanged: onChanged,
           ),
@@ -281,7 +344,7 @@ class _NotificationSettingsScreenState
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => playPreview(currentSound),
+              onPressed: onPreview,
               icon: const Icon(Icons.play_arrow, color: Colors.white),
               label: const Text(
                 "Preview Sound",

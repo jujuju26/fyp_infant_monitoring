@@ -96,9 +96,6 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
 
   // ---------- IMAGE UPLOAD HELPERS ----------
 
-  /// Pick one image and upload to:
-  ///   packages/<timestamp>_<cleanedFileName>
-  /// Returns ONLY the storage path, e.g. "packages/1765015315507_deluxe1.png".
   Future<String?> _pickAndUploadImage() async {
     try {
       final result = await FilePicker.platform.pickFiles(

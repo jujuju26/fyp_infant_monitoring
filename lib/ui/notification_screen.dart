@@ -23,7 +23,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   static const accent = Color(0xFFC2868B);
   static const pinkSoft = Color(0xFFFADADD);
 
-  /// TODO: later you will pass this from InfantMonitoring screen
+  /// TEMP: May be passed from InfantMonitoring
   String infantId = "NEa7O0FMT00FKM2Rew6w";
 
   // SETTINGS
@@ -49,7 +49,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     _listenToDetections();
   }
 
-  // Load from Firestore: parent > settings > notifications
+  // Load parent notification settings
   Future<void> _loadSettings() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -74,7 +74,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     _player.setVolume(volume);
   }
 
-  // Listen to Firestore for new detections (cry + danger)
+  // Listen to Firestore for cry or danger detections
   void _listenToDetections() {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -92,13 +92,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
       final latest = snapshot.docs.first;
       final latestId = latest.id;
 
-      // First time opening screen -> set baseline, no alert
       if (lastSeenDocId == null) {
         lastSeenDocId = latestId;
         return;
       }
 
-      // If a NEW detection (new document ID), trigger alert
       if (latestId != lastSeenDocId) {
         lastSeenDocId = latestId;
         await _triggerAlert(latest.data() as Map<String, dynamic>);
@@ -106,43 +104,27 @@ class _NotificationScreenState extends State<NotificationScreen> {
     });
   }
 
-  // Trigger sound, vibration and popup depending on type
+  // Trigger alert using sound, vibration and popup
   Future<void> _triggerAlert(Map<String, dynamic> data) async {
     final String type = (data["type"] ?? "cry").toString(); // cry / danger
     final String reason = (data["reason"] ?? "Unknown").toString();
-    final String dangerType = (data["dangerType"] ?? "face_covered").toString();
 
-    // ---------- Build title & body ----------
     String title;
     String body;
 
     if (type == "danger") {
-      // Face covered / unsafe position
+      // ONLY ONE DANGER TYPE NOW: face covered
       title = "Danger! Baby might be in unsafe position";
-      String niceDangerText;
-      switch (dangerType) {
-        case "face_covered":
-          niceDangerText = "Face may be covered. Please check immediately.";
-          break;
-        case "unsafe_position":
-          niceDangerText = "Unsafe sleeping position detected.";
-          break;
-        default:
-          niceDangerText =
-          "Potential danger detected. Please check your baby.";
-      }
-      body = niceDangerText;
+      body = "Face may be covered. Please check immediately.";
     } else {
-      // Default: cry
       title = "Baby is Crying!";
       body = "Reason: $reason";
     }
 
-    // ---------- SOUND ----------
+    // SOUND
     if (soundEnabled) {
       try {
         await _player.stop();
-        // For now reuse the same alert sound for both cry + danger
         await _player.play(
           AssetSource("sounds/$cryingSound"),
           volume: volume,
@@ -152,19 +134,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
     }
 
-    // ---------- VIBRATION ----------
+    // VIBRATION
     if (vibrateEnabled && (await Vibration.hasVibrator() ?? false)) {
       if (type == "danger") {
-        // Stronger vibration pattern for danger
-        Vibration.vibrate(
-          pattern: [0, 800, 300, 800],
-        );
+        Vibration.vibrate(pattern: [0, 800, 300, 800]);
       } else {
         Vibration.vibrate(duration: 1000);
       }
     }
 
-    // ---------- POPUP ----------
+    // POPUP
     if (popupEnabled) {
       AwesomeNotifications().createNotification(
         content: NotificationContent(
@@ -280,8 +259,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           }
 
           return ListView.builder(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final doc = docs[i];
@@ -293,15 +271,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
               (data["type"] ?? "cry").toString(); // cry / danger
               final String? reason =
               data["reason"] != null ? data["reason"].toString() : null;
-              final String? dangerType = data["dangerType"] != null
-                  ? data["dangerType"].toString()
-                  : null;
 
               return _notificationCard(
                 time: timeText,
                 type: type,
                 reason: reason,
-                dangerType: dangerType,
                 onTap: () {
                   Navigator.push(
                     context,
@@ -321,7 +295,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // Drawer item widget
   static Widget _drawerItem(
       IconData icon, String title, VoidCallback onTap) {
     return ListTile(
@@ -334,31 +307,20 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // Notification card widget: supports CRY + DANGER
+  // Notification card for CRY + single DANGER type
   Widget _notificationCard({
     required String time,
     required String type,
     required String? reason,
-    required String? dangerType,
     required VoidCallback onTap,
   }) {
     final bool isDanger = type == "danger";
 
     String mainText;
+
     if (isDanger) {
-      String niceDanger;
-      switch (dangerType) {
-        case "face_covered":
-          niceDanger = "Face may be covered. Please check immediately.";
-          break;
-        case "unsafe_position":
-          niceDanger = "Unsafe sleeping position detected.";
-          break;
-        default:
-          niceDanger =
-          "Potential danger detected. Please check your baby.";
-      }
-      mainText = "Danger detected\n$niceDanger\n$time";
+      mainText =
+      "Danger detected\nFace may be covered. Please check immediately.\n$time";
     } else {
       final String r = reason ?? "Unknown";
       mainText = "Baby is crying\nReason: $r\n$time";
@@ -380,7 +342,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
           color: cardColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isDanger ? Colors.redAccent.withOpacity(0.5) : Colors.transparent,
+            color: isDanger
+                ? Colors.redAccent.withOpacity(0.5)
+                : Colors.transparent,
           ),
         ),
         child: Row(
