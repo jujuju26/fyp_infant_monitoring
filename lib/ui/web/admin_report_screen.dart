@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 
 import 'admin_dashboard_screen.dart';
 import 'admin_logout_screen.dart';
+import 'admin_meal_screen.dart';
 import 'admin_packages_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_staff_screen.dart';
@@ -181,12 +182,18 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         final double totalPayable = (totalPayableNum).toDouble();
 
         // Status
+        // Status
         String status = (data['status'] ?? 'pending').toString();
+        final normalizedStatus = status.toLowerCase();
 
-        revenue += totalPayable;
-        bookingsCount += 1;
+// Only add revenue & count bookings if status is valid
+        if (normalizedStatus == 'approved' || normalizedStatus == 'completed') {
+          revenue += totalPayable;
+          bookingsCount += 1;
 
-        pkgCounts[packageName] = (pkgCounts[packageName] ?? 0) + 1;
+          // Only count top packages for successful bookings
+          pkgCounts[packageName] = (pkgCounts[packageName] ?? 0) + 1;
+        }
 
         bookings.add(
           BookingInfo(
@@ -582,6 +589,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         'label': 'Packages',
         'selected': false
       },
+      {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false,},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': true},
     ];
 
@@ -663,6 +671,12 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => AdminPackagesScreen()),
+        );
+        break;
+      case 'Meal':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminMealScreen()),
         );
         break;
       case 'Report':

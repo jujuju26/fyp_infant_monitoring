@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_infant_monitoring/ui/web/admin_packages_screen.dart';
 import 'package:intl/intl.dart';
 import 'admin_logout_screen.dart';
+import 'admin_meal_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_staff_screen.dart';
@@ -24,7 +25,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   double totalProfit = 0;
   int newCustomers = 0;
   int repeatedCustomers = 0;
-  Map<String, dynamic>? featuredPackage;
   List<BookingData> allBookings = [];
   List<YearlySales> yearlySales = [];
   String adminName = "";
@@ -32,9 +32,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   bool isLoading = true;
 
+  // Filters for Business KPI card
+  final List<String> _monthOptions = const [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  final List<String> _yearOptions =
+  List.generate(11, (i) => (2015 + i).toString()); // 2015–2025
+
+  late String _selectedMonth;
+  late String _selectedYear;
+
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedMonth = DateFormat('MMM').format(now); // e.g. "Dec"
+    if (!_monthOptions.contains(_selectedMonth)) {
+      // In case locale uses different short month, fallback
+      _selectedMonth = _monthOptions[now.month - 1];
+    }
+    _selectedYear = now.year.toString();
+
     _loadAdminInfo();
     _loadDashboardData();
   }
@@ -45,7 +75,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const AdminLogoutScreen()),
-        (route) => false,
+            (route) => false,
       );
     } catch (e) {
       print('Error signing out: $e');
@@ -56,10 +86,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
 
-      final doc = await FirebaseFirestore.instance
-          .collection('admin')
-          .doc(uid)
-          .get();
+      final doc =
+      await FirebaseFirestore.instance.collection('admin').doc(uid).get();
 
       if (doc.exists) {
         setState(() {
@@ -80,22 +108,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
 
     try {
-      final packageSnapshot = await _firestore.collection('package').get();
-
-      if (!mounted) return;
-
-      List<Map<String, dynamic>> packages = packageSnapshot.docs
-          .map((doc) => doc.data())
-          .toList();
-
-      packages.sort((a, b) {
-        final p1 = (a['price'] ?? 0).toDouble();
-        final p2 = (b['price'] ?? 0).toDouble();
-        return p2.compareTo(p1);
-      });
-
-      featuredPackage = packages.isNotEmpty ? packages.first : null;
-
       final parentsSnapshot = await _firestore.collection('parent').get();
 
       if (!mounted) return;
@@ -110,19 +122,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       Map<int, double> salesByYear = {};
 
       for (final parentDoc in parentsSnapshot.docs) {
-        final bookingsSnapshot = await parentDoc.reference
-            .collection('bookings')
-            .get();
+        final bookingsSnapshot =
+        await parentDoc.reference.collection('bookings').get();
 
-        if (!mounted)
-          return; // Make sure widget is still mounted before proceeding.
+        if (!mounted) return;
 
         if (bookingsSnapshot.docs.isEmpty) {
-          newCustCount++; // No bookings, so count as new customer.
+          // No bookings, count as new customer
+          newCustCount++;
           continue;
         }
 
-        // Check if the customer has exactly one booking or more.
+        // New vs repeated customer
         bool isNewCustomer = bookingsSnapshot.docs.length == 1;
         if (isNewCustomer) {
           newCustCount++;
@@ -132,16 +143,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         for (final bookingDoc in bookingsSnapshot.docs) {
           final booking = bookingDoc.data();
+          final status = (booking['status'] ?? 'PENDING') as String;
 
-          if (booking['status'] == 'APPROVED') {
-            // Safely extract totalPayable and ensure it's a double
-            double totalPayable = (booking['totalPayable'] ?? 0).toDouble();
+          // Safely extract totalPayable and ensure it's a double
+          double totalPayable = (booking['totalPayable'] ?? 0).toDouble();
 
-            // Accumulate total sales and profit
+          // Revenue & profit only for APPROVED bookings
+          if (status == 'APPROVED') {
             salesSum += totalPayable;
             profitSum += totalPayable * 0.3;
 
-            // Extract the date and categorize sales by year
+            // Extract the date and categorize sales by year using timestamp
             Timestamp? ts = booking['timestamp'];
             DateTime? date = ts?.toDate();
 
@@ -149,16 +161,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               int year = date.year;
               salesByYear[year] = (salesByYear[year] ?? 0) + totalPayable;
             }
-
-            // Add the booking to the list for further processing
-            bookingsList.add(
-              BookingData(
-                parentId: parentDoc.id,
-                checkInDate: booking['checkInDate'],
-                totalPayable: totalPayable,
-              ),
-            );
           }
+
+          // Add the booking to the list for further processing
+          bookingsList.add(
+            BookingData(
+              parentId: parentDoc.id,
+              checkInDate: booking['checkInDate'],
+              totalPayable: totalPayable,
+              status: status,
+            ),
+          );
         }
       }
 
@@ -211,6 +224,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  int _monthNameToNumber(String monthName) {
+    final index = _monthOptions.indexOf(monthName);
+    if (index == -1) return 1;
+    return index + 1;
+  }
+
   // Build charts and widgets
   Widget _buildRevenueChart() {
     // SALES
@@ -218,8 +237,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       double monthlySales = 0;
 
       for (final booking in allBookings) {
-        final bookingDate = DateTime.parse(booking.checkInDate!);
-        if (bookingDate.month == monthIndex + 1) {
+        if (booking.checkInDate == null) continue;
+        final bookingDate = DateTime.tryParse(booking.checkInDate!);
+        if (bookingDate == null) continue;
+
+        if (bookingDate.month == monthIndex + 1 &&
+            booking.status == 'APPROVED') {
           monthlySales += booking.totalPayable;
         }
       }
@@ -235,8 +258,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       double monthlyProfit = 0;
 
       for (final booking in allBookings) {
-        final bookingDate = DateTime.parse(booking.checkInDate!);
-        if (bookingDate.month == monthIndex + 1) {
+        if (booking.checkInDate == null) continue;
+        final bookingDate = DateTime.tryParse(booking.checkInDate!);
+        if (bookingDate == null) continue;
+
+        if (bookingDate.month == monthIndex + 1 &&
+            booking.status == 'APPROVED') {
           monthlyProfit += booking.totalPayable * 0.3;
         }
       }
@@ -261,6 +288,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 interval: 1,
                 getTitlesWidget: (value, _) {
                   int month = value.toInt();
+                  if (month < 1 || month > 12) return const SizedBox();
                   return Text(
                     DateFormat('MMM').format(DateTime(0, month)),
                     style: const TextStyle(fontSize: 12, color: Colors.black54),
@@ -310,6 +338,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildCustomerDonutChart() {
     final total = newCustomers + repeatedCustomers;
+    // If no customers yet, just show empty state
+    if (total == 0) {
+      return const Center(
+        child: Text(
+          'No customer data yet',
+          style: TextStyle(fontSize: 13, color: Colors.black54),
+        ),
+      );
+    }
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
@@ -337,8 +374,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
 
-        // Use Flexible to prevent overflow and allow donut chart to adjust
-        const SizedBox(width: 20), // Space between the legend and the donut chart
+        const SizedBox(width: 20),
         Flexible(
           child: SizedBox(
             height: 120,
@@ -380,73 +416,330 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Future<Widget> _buildFeaturedPackageCard() async {
-    if (featuredPackage == null) {
-      return const SizedBox.shrink();
+  /// NEW: Business KPI Card with Month + Year filter
+  Widget _buildBusinessKpiCard() {
+    if (allBookings.isEmpty) {
+      return Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 3,
+        color: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: const [
+              Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  'Business Overview',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'No booking data available yet.',
+                style: TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    final name = featuredPackage!['name'] ?? 'No Name';
-    final price = (featuredPackage!['price'] ?? 0).toDouble();
-    final List images = List<String>.from(featuredPackage!['images']);
+    final int month = _monthNameToNumber(_selectedMonth);
+    final int year = int.tryParse(_selectedYear) ?? DateTime.now().year;
+
+    final int prevMonth = month == 1 ? 12 : month - 1;
+    final int prevYear = month == 1 ? year - 1 : year;
+
+    int currentTotal = 0;
+    int lastMonthTotal = 0;
+
+    double approvedRevenueThisMonth = 0;
+    int approvedCountThisMonth = 0;
+
+    int approvedCount = 0;
+    int pendingCount = 0;
+    int rejectedCount = 0;
+
+    for (final booking in allBookings) {
+      if (booking.checkInDate == null) continue;
+      final dt = DateTime.tryParse(booking.checkInDate!);
+      if (dt == null) continue;
+
+      // Current month/year filter
+      if (dt.year == year && dt.month == month) {
+        currentTotal++;
+
+        if (booking.status == 'APPROVED') {
+          approvedCount++;
+          approvedCountThisMonth++;
+          approvedRevenueThisMonth += booking.totalPayable;
+        } else if (booking.status == 'PENDING') {
+          pendingCount++;
+        } else if (booking.status == 'REJECTED') {
+          rejectedCount++;
+          }
+      }
+
+      // Last month for growth comparison
+      if (dt.year == prevYear && dt.month == prevMonth) {
+        lastMonthTotal++;
+      }
+    }
+
+    String growthText;
+    if (lastMonthTotal == 0 && currentTotal > 0) {
+      growthText = 'New';
+    } else if (lastMonthTotal == 0 && currentTotal == 0) {
+      growthText = '0%';
+    } else {
+      final growth =
+          ((currentTotal - lastMonthTotal) / lastMonthTotal) * 100.0;
+      growthText = '${growth.toStringAsFixed(1)}%';
+    }
+
+    final avgRevenuePerBooking = approvedCountThisMonth > 0
+        ? approvedRevenueThisMonth / approvedCountThisMonth
+        : 0.0;
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 6, // Higher elevation for a more distinct shadow
-      shadowColor: Colors.black.withOpacity(0.2), // Softer shadow
+      elevation: 3,
+      color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        // Add padding for space around the card
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Title Text: Featured Package
-            Text(
-              'Featured Package', // Title text
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-                fontFamily: 'Poppins',
-              ),
+            // Title + Filters row
+            Row(
+              children: [
+                const Text(
+                  'Business Overview',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+                const Spacer(),
+                // Month dropdown
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: DropdownButton<String>(
+                    value: _selectedMonth,
+                    items: _monthOptions
+                        .map(
+                          (m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(m),
+                      ),
+                    )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _selectedMonth = value;
+                      });
+                    },
+                    underline: const SizedBox.shrink(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Year dropdown
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: DropdownButton<String>(
+                    value: _selectedYear,
+                    items: _yearOptions
+                        .map(
+                          (y) => DropdownMenuItem(
+                        value: y,
+                        child: Text(y),
+                      ),
+                    )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _selectedYear = value;
+                      });
+                    },
+                    underline: const SizedBox.shrink(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12), // Space between title and image
-            // Display the image
-            if (images.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                // Round corners for the image
-                child: Image.asset(
-                  'assets/images/${images[0]}', // Display only the first image
-                  fit: BoxFit.cover,
-                  // Ensures the image covers the box without distortion
-                  height: 140,
-                  width: 230,
+            const SizedBox(height: 16),
+            // KPI rows
+            Row(
+              children: [
+                Expanded(
+                  child: _kpiTile(
+                    title: 'Total Bookings',
+                    value: currentTotal.toString(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _kpiTile(
+                    title: 'Last Month',
+                    value: lastMonthTotal.toString(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _kpiTile(
+                    title: 'Booking Growth',
+                    value: growthText,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _kpiTile(
+                    title: 'Avg Revenue / Booking',
+                    value: currentTotal == 0
+                        ? 'RM 0.00'
+                        : _formatCurrency(avgRevenuePerBooking),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Status breakdown
+            Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                'Status Breakdown',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                  fontFamily: 'Poppins',
                 ),
               ),
-            const SizedBox(height: 7), // Space between image and text
-            // Display the name of the package
-            Text(
-              name,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Poppins',
-              ),
             ),
-            const SizedBox(height: 3), // Space between name and price
-            // Display the price
-            Text(
-              _formatCurrency(price),
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.redAccent,
-                fontFamily: 'Poppins',
-              ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _statusChip('Approved', approvedCount),
+                _statusChip('Pending', pendingCount),
+                _statusChip('Rejected', rejectedCount),
+              ],
             ),
-            const SizedBox(height: 5), // Space at the bottom
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _kpiTile({required String title, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.black54,
+              fontFamily: 'Poppins',
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Poppins',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String label, int count) {
+    // Choose colors based on status
+    Color bgColor;
+    Color textColor;
+
+    switch (label.toUpperCase()) {
+      case 'APPROVED':
+        bgColor = const Color(0xFFE0FFF0); // soft mint green
+        textColor = const Color(0xFF1E8A4F);
+        break;
+
+      case 'PENDING':
+        bgColor = const Color(0xFFFFF6D8); // soft pastel yellow
+        textColor = const Color(0xFFB58B00);
+        break;
+
+      case 'REJECTED':
+        bgColor = const Color(0xFFFFE6E9); // soft rose red
+        textColor = const Color(0xFFD64559);
+        break;
+
+      default:
+        bgColor = Colors.grey.shade200;
+        textColor = Colors.grey.shade700;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontFamily: 'Poppins',
+              color: textColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            count.toString(),
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -465,16 +758,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         LineChartData(
           minY: 0,
           maxX: yearlySales.length.toDouble(),
-
           lineTouchData: LineTouchData(
             enabled: true,
             touchTooltipData: LineTouchTooltipData(
               getTooltipItems: (List<LineBarSpot> touchedSpots) {
                 return touchedSpots.map((spot) {
                   final double value = spot.y;
-
                   return LineTooltipItem(
-                    "${value.toStringAsFixed(2)}", // 2 decimal places
+                    value.toStringAsFixed(2),
                     const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -485,7 +776,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
           ),
-
           gridData: FlGridData(show: true),
           titlesData: FlTitlesData(
             bottomTitles: AxisTitles(
@@ -494,8 +784,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 interval: 2,
                 getTitlesWidget: (value, meta) {
                   int index = value.toInt();
-                  if (index < 0 || index >= yearlySales.length)
+                  if (index < 0 || index >= yearlySales.length) {
                     return const SizedBox();
+                  }
                   return Text(
                     yearlySales[index].year.toString(),
                     style: const TextStyle(fontSize: 12, color: Colors.black54),
@@ -514,7 +805,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: false),
-
           lineBarsData: [
             LineChartBarData(
               spots: salesSpots,
@@ -547,11 +837,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundColor: Color(0xFFFADADD),
-            child: const Icon(Icons.person, size: 24, color: Color(0xFFC2868B)),
+            backgroundColor: const Color(0xFFFADADD),
+            child:
+            const Icon(Icons.person, size: 24, color: Color(0xFFC2868B)),
           ),
           const SizedBox(width: 10),
-
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,9 +864,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ],
           ),
-
           const SizedBox(width: 8),
-
           PopupMenuButton<String>(
             icon: const Icon(Icons.keyboard_arrow_down),
             onSelected: (value) {
@@ -605,11 +893,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     List<Map<String, dynamic>> sidebarItems = [
       {'icon': Icons.dashboard, 'label': 'Dashboard', 'selected': true},
       {'icon': Icons.people, 'label': 'Staff', 'selected': false},
-      {
-        'icon': Icons.shopping_bag_outlined,
-        'label': 'Packages',
-        'selected': false,
-      },
+      {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': false,},
+      {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
@@ -623,7 +908,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             padding: const EdgeInsets.only(bottom: 40),
             child: Image.asset('assets/images/logo2.png', height: 60),
           ),
-          // Use ListView.builder for sidebar items
           Expanded(
             child: ListView.builder(
               itemCount: sidebarItems.length,
@@ -634,7 +918,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   label: item['label'],
                   selected: item['selected'],
                   onTap: () {
-                    // Perform navigation here based on the label
                     _navigateTo(item['label']);
                   },
                 );
@@ -679,17 +962,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           color: selected ? Colors.red.shade200 : Colors.black87,
         ),
       ),
-      onTap: () => onTap(), // Call onTap callback for navigation
+      onTap: () => onTap(),
     );
   }
 
   void _navigateTo(String label) {
-    // Handle navigation based on label
     switch (label) {
       case 'Dashboard':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => AdminDashboardScreen()),
+          MaterialPageRoute(
+            builder: (context) => const AdminDashboardScreen(),
+          ),
         );
         break;
       case 'Staff':
@@ -701,17 +985,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 'Packages':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => AdminPackagesScreen()),
+          MaterialPageRoute(builder: (context) => const AdminPackagesScreen()),
+        );
+        break;
+      case 'Meal':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminMealScreen()),
         );
         break;
       case 'Report':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => AdminReportScreen()),
+          MaterialPageRoute(builder: (context) => const AdminReportScreen()),
         );
         break;
       default:
-        // Default action
         break;
     }
   }
@@ -727,31 +1016,116 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: Column(
               children: [
                 _buildTopBar(),
-
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: isLoading
                         ? const Center(child: CircularProgressIndicator())
                         : SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Dashboard',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.red.shade200,
-                                    fontFamily: 'Poppins',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Dashboard',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.red.shade200,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          // Revenue chart card
+                          Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 3,
+                            color: Colors.white,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Revenue',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.black87,
+                                          fontFamily: 'Poppins',
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Container(
+                                        padding:
+                                        const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[100],
+                                          borderRadius:
+                                          BorderRadius.circular(12),
+                                        ),
+                                        child: DropdownButton<String>(
+                                          value: '2025',
+                                          items: const [
+                                            DropdownMenuItem(
+                                              value: '2025',
+                                              child: Text('2025'),
+                                            ),
+                                          ],
+                                          onChanged: (_) {},
+                                          underline:
+                                          const SizedBox.shrink(),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(height: 20),
+                                  const SizedBox(height: 8),
+                                  _buildRevenueChart(),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                    children: [
+                                      _legendDot(
+                                        Colors.redAccent.shade200,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text('Sales'),
+                                      const SizedBox(width: 12),
+                                      _legendDot(Colors.purpleAccent),
+                                      const SizedBox(width: 6),
+                                      const Text('Profit'),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
 
-                                // Revenue chart card
-                                Card(
+                          const SizedBox(height: 20),
+
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 20),
+                            child: _buildBusinessKpiCard(), // Full width
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Bottom cards: Customers, Sales Analytics
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Customers card
+                              Expanded(
+                                child: Card(
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius:
+                                    BorderRadius.circular(16),
                                   ),
                                   elevation: 3,
                                   color: Colors.white,
@@ -759,237 +1133,118 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                     padding: const EdgeInsets.all(16),
                                     child: Column(
                                       children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              'Revenue',
-                                              style: TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.w700,
-                                                color: Colors.black87,
-                                                fontFamily: 'Poppins',
-                                              ),
+                                        Align(
+                                          alignment: Alignment.topLeft,
+                                          child: Text(
+                                            'Customers',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.black87,
+                                              fontFamily: 'Poppins',
                                             ),
-                                            const Spacer(),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 6,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey[100],
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: DropdownButton<String>(
-                                                value: '2025',
-                                                items: const [
-                                                  DropdownMenuItem(
-                                                    value: '2025',
-                                                    child: Text('2025'),
-                                                  ),
-                                                ],
-                                                onChanged: (_) {},
-                                                underline:
-                                                    const SizedBox.shrink(),
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
-                                        const SizedBox(height: 8),
-                                        _buildRevenueChart(),
-                                        const SizedBox(height: 8),
+                                        const SizedBox(height: 12),
+                                        _buildCustomerDonutChart(),
+                                        const SizedBox(height: 12),
                                         Row(
                                           mainAxisAlignment:
-                                              MainAxisAlignment.center,
+                                          MainAxisAlignment
+                                              .spaceEvenly,
                                           children: [
-                                            _legendDot(
-                                              Colors.redAccent.shade200,
+                                            Column(
+                                              children: [
+                                                Text(
+                                                  newCustomers.toString(),
+                                                  style: const TextStyle(
+                                                    fontSize: 24,
+                                                    fontWeight:
+                                                    FontWeight.w700,
+                                                    fontFamily: 'Poppins',
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  'New Customers',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors
+                                                        .brown.shade200,
+                                                    fontFamily: 'Poppins',
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            const SizedBox(width: 6),
-                                            const Text('Sales'),
-                                            const SizedBox(width: 12),
-                                            _legendDot(Colors.purpleAccent),
-                                            const SizedBox(width: 6),
-                                            const Text('Profit'),
+                                            Column(
+                                              children: [
+                                                Text(
+                                                  repeatedCustomers
+                                                      .toString(),
+                                                  style: const TextStyle(
+                                                    fontSize: 24,
+                                                    fontWeight:
+                                                    FontWeight.w700,
+                                                    fontFamily: 'Poppins',
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  'Repeated',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors
+                                                        .pink.shade200,
+                                                    fontFamily: 'Poppins',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ],
                                         ),
                                       ],
                                     ),
                                   ),
                                 ),
-
-                                const SizedBox(height: 20),
-
-                                // Bottom cards: Customers, Featured Package, Sales Analytics
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Customers card
-                                    Expanded(
-                                      child: Card(
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
+                              ),
+                              const SizedBox(width: 20),
+                              // Sales analytics card
+                              Expanded(
+                                child: Card(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                    BorderRadius.circular(16),
+                                  ),
+                                  elevation: 3,
+                                  color: Colors.white,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      children: [
+                                        Align(
+                                          alignment: Alignment.topLeft,
+                                          child: Text(
+                                            'Sales Analytics',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.black87,
+                                              fontFamily: 'Poppins',
+                                            ),
                                           ),
                                         ),
-                                        elevation: 3,
-                                        color: Colors.white,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: Column(
-                                            children: [
-                                              Align(
-                                                alignment: Alignment.topLeft,
-                                                child: Text(
-                                                  'Customers',
-                                                  style: TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: Colors.black87,
-                                                    fontFamily: 'Poppins',
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              _buildCustomerDonutChart(),
-                                              const SizedBox(height: 12),
-                                              Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceEvenly,
-                                                children: [
-                                                  Column(
-                                                    children: [
-                                                      Text(
-                                                        newCustomers.toString(),
-                                                        style: const TextStyle(
-                                                          fontSize: 24,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          fontFamily: 'Poppins',
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 6),
-                                                      Text(
-                                                        'New Customers',
-                                                        style: TextStyle(
-                                                          fontSize: 14,
-                                                          color: Colors
-                                                              .brown
-                                                              .shade200,
-                                                          fontFamily: 'Poppins',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Column(
-                                                    children: [
-                                                      Text(
-                                                        repeatedCustomers
-                                                            .toString(),
-                                                        style: const TextStyle(
-                                                          fontSize: 24,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          fontFamily: 'Poppins',
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 6),
-                                                      Text(
-                                                        'Repeated',
-                                                        style: TextStyle(
-                                                          fontSize: 14,
-                                                          color: Colors
-                                                              .pink
-                                                              .shade200,
-                                                          fontFamily: 'Poppins',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
+                                        const SizedBox(height: 8),
+                                        _buildSalesAnalyticsChart(),
+                                      ],
                                     ),
-
-                                    const SizedBox(width: 10),
-
-                                    // Featured package card
-                                    Expanded(
-                                      child: FutureBuilder(
-                                        future: _buildFeaturedPackageCard(),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.connectionState ==
-                                              ConnectionState.waiting) {
-                                            return const SizedBox(
-                                              height: 150,
-                                              child: Center(
-                                                child:
-                                                    CircularProgressIndicator(),
-                                              ),
-                                            );
-                                          }
-
-                                          if (snapshot.hasError) {
-                                            return const Text(
-                                              "Error loading package",
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ), // Ensure text is readable on pink
-                                            );
-                                          }
-
-                                          return snapshot.data ??
-                                              const SizedBox.shrink(); // Display the card content
-                                        },
-                                      ),
-                                    ),
-
-                                    const SizedBox(width: 10),
-
-                                    // Sales analytics card
-                                    Expanded(
-                                      child: Card(
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                        ),
-                                        elevation: 3,
-                                        color: Colors.white,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: Column(
-                                            children: [
-                                              Align(
-                                                alignment: Alignment.topLeft,
-                                                child: Text(
-                                                  'Sales Analytics',
-                                                  style: TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: Colors.black87,
-                                                    fontFamily: 'Poppins',
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              _buildSalesAnalyticsChart(),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -1005,11 +1260,13 @@ class BookingData {
   final String parentId;
   final String? checkInDate;
   final double totalPayable;
+  final String status;
 
   BookingData({
     required this.parentId,
     this.checkInDate,
     required this.totalPayable,
+    required this.status,
   });
 }
 

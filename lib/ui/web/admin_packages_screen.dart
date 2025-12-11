@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../storage_image_helper.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_logout_screen.dart';
+import 'admin_meal_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_staff_screen.dart';
@@ -71,6 +72,12 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         break;
       case 'Packages':
         // already here
+        break;
+      case 'Meal':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminMealScreen()),
+        );
         break;
       case 'Report':
         Navigator.push(
@@ -140,38 +147,37 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
   // ---------- CRUD HELPERS ----------
 
   Future<bool> _isPackageBooked(String packageId) async {
-    final snap = await _firestore
-        .collection("bookings")
-        .where("packageId", isEqualTo: packageId)
-        .limit(1)
-        .get();
+    final parents = await _firestore.collection("parent").get();
 
-    return snap.docs.isNotEmpty;
+    for (final parentDoc in parents.docs) {
+      final bookingSnap = await parentDoc.reference
+          .collection("bookings")
+          .where("packageId", isEqualTo: packageId)
+          .limit(1)
+          .get();
+
+      if (bookingSnap.docs.isNotEmpty) {
+        return true; // found a booking → package is used
+      }
+    }
+
+    return false; // no booking found
   }
 
   Future<void> _deletePackage(String id) async {
-    final bookingSnap = await _firestore
-        .collection("bookings")
-        .where("packageId", isEqualTo: id)
-        .limit(1)
-        .get();
+    final booked = await _isPackageBooked(id);
 
-    if (bookingSnap.docs.isNotEmpty) {
+    if (booked) {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text(
             "Cannot Delete Package",
-            style: TextStyle(
-              fontFamily: "Poppins",
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(fontFamily: "Poppins", fontWeight: FontWeight.w600),
           ),
           content: const Text(
-            "This package cannot be deleted because one or more parents have already booked it.",
+            "This package has been booked by a parent and cannot be deleted.",
             style: TextStyle(fontFamily: "Poppins"),
           ),
           actions: [
@@ -346,7 +352,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                         const SizedBox(height: 20),
 
                         const Text(
-                          "Images (stored in Firebase Storage)",
+                          "Images",
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontWeight: FontWeight.w600,
@@ -355,87 +361,71 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
                         ),
                         const SizedBox(height: 8),
 
-                        // Thumbnails row
                         SizedBox(
                           height: 110,
                           child: Row(
                             children: [
                               Expanded(
-                                child: imagePaths.isEmpty
-                                    ? Container(
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: imagePaths.length,
+                                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                  itemBuilder: (context, index) {
+                                    // --------- ALWAYS SHOW ASSET IMAGE ---------
+                                    String assetToShow = "assets/images/default.png";
+
+                                    final name = nameController.text.toLowerCase();
+                                    if (name.contains("deluxe")) {
+                                      assetToShow = "assets/images/deluxe${index + 1}.png";
+                                    } else if (name.contains("vip")) {
+                                      assetToShow = "assets/images/vip${index + 1}.png";
+                                    }
+
+                                    return Stack(
+                                      children: [
+                                        Container(
+                                          width: 100,
+                                          height: 100,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(12),
+                                            color: Colors.grey.shade200,
                                           ),
-                                          border: Border.all(
-                                            color: Colors.grey.shade300,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Image.asset(
+                                              assetToShow,
+                                              fit: BoxFit.cover,
+                                            ),
                                           ),
                                         ),
-                                        child: const Text(
-                                          "No images selected",
-                                          style: TextStyle(
-                                            fontFamily: 'Poppins',
-                                            fontSize: 12,
+
+                                        // ------- DELETE IMAGE BUTTON -------
+                                        Positioned(
+                                          right: 0,
+                                          top: 0,
+                                          child: InkWell(
+                                            onTap: () => removeImage(index),
+                                            child: Container(
+                                              decoration: const BoxDecoration(
+                                                color: Colors.black54,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              padding: const EdgeInsets.all(4),
+                                              child: const Icon(
+                                                Icons.close,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      )
-                                    : ListView.separated(
-                                        scrollDirection: Axis.horizontal,
-                                        itemCount: imagePaths.length,
-                                        separatorBuilder: (_, __) =>
-                                            const SizedBox(width: 8),
-                                        itemBuilder: (context, index) {
-                                          final path = imagePaths[index];
-                                          return Stack(
-                                            children: [
-                                              Container(
-                                                width: 100,
-                                                height: 100,
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  color: Colors.grey.shade200,
-                                                ),
-                                                child: ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  child:
-                                                      StorageHelper.networkImage(
-                                                        path,
-                                                        fit: BoxFit.cover,
-                                                      ),
-                                                ),
-                                              ),
-                                              Positioned(
-                                                right: 0,
-                                                top: 0,
-                                                child: InkWell(
-                                                  onTap: () =>
-                                                      removeImage(index),
-                                                  child: Container(
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          color: Colors.black54,
-                                                          shape:
-                                                              BoxShape.circle,
-                                                        ),
-                                                    padding:
-                                                        const EdgeInsets.all(4),
-                                                    child: const Icon(
-                                                      Icons.close,
-                                                      size: 14,
-                                                      color: Colors.white,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
+                                      ],
+                                    );
+                                  },
+                                ),
                               ),
+
+                              // -------- Add Image Button (still works) --------
                               const SizedBox(width: 10),
                               ElevatedButton.icon(
                                 onPressed: addImage,
@@ -546,6 +536,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         'label': 'Packages',
         'selected': true,
       },
+      {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false,},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
@@ -1020,8 +1011,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
   }
 }
 
-// ---------- CARD WIDGET (uses StorageHelper) ----------
-
+// ---------- CARD WIDGET (auto-load assets by package name) ----------
 class _PackageCard extends StatefulWidget {
   final Map<String, dynamic> data;
   final Color accent;
@@ -1045,11 +1035,37 @@ class _PackageCard extends StatefulWidget {
 class _PackageCardState extends State<_PackageCard> {
   int _currentImage = 0;
 
+  /// 🔥 Instead of reading Firestore, we hardcode image sets here:
+  List<String> _getImages(String name) {
+    name = name.toLowerCase();
+
+    if (name.contains("deluxe")) {
+      return [
+        "assets/images/deluxe1.png",
+        "assets/images/deluxe2.png",
+        "assets/images/deluxe3.png",
+      ];
+    }
+
+    if (name.contains("vip")) {
+      return [
+        "assets/images/vip1.png",
+        "assets/images/vip2.png",
+        "assets/images/vip3.png",
+      ];
+    }
+
+    // default fallback if name unknown
+    return ["assets/images/default.png"];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<String> images = List<String>.from(widget.data['images'] ?? []);
     final String name = widget.data['name'] ?? '';
     final double price = (widget.data['price'] as num?)?.toDouble() ?? 0.0;
+
+    // 🔥 Build image list completely independent of Firestore
+    final List<String> images = _getImages(name);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1068,69 +1084,56 @@ class _PackageCardState extends State<_PackageCard> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          // IMAGE CAROUSEL
+          // ---------- IMAGE CAROUSEL ----------
           SizedBox(
             height: 120,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: images.isEmpty
-                  ? Container(
-                      color: widget.lightPink.withOpacity(0.4),
-                      child: const Center(
-                        child: Icon(
-                          Icons.image_not_supported_outlined,
-                          size: 40,
-                          color: Colors.black38,
-                        ),
-                      ),
-                    )
-                  : Stack(
-                      children: [
-                        PageView.builder(
-                          itemCount: images.length,
-                          onPageChanged: (i) =>
-                              setState(() => _currentImage = i),
-                          itemBuilder: (_, index) {
-                            final path = images[index];
-                            return StorageHelper.networkImage(
-                              path,
-                              fit: BoxFit.cover,
-                            );
-                          },
-                        ),
-                        if (images.length > 1)
-                          Positioned(
-                            bottom: 5,
-                            left: 0,
-                            right: 0,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(images.length, (i) {
-                                final active = i == _currentImage;
-                                return AnimatedContainer(
-                                  duration: const Duration(milliseconds: 250),
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 3,
-                                  ),
-                                  width: active ? 10 : 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: active
-                                        ? widget.accent
-                                        : Colors.white.withOpacity(0.7),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                );
-                              }),
-                            ),
+              child: Stack(
+                children: [
+                  PageView.builder(
+                    itemCount: images.length,
+                    onPageChanged: (i) => setState(() => _currentImage = i),
+                    itemBuilder: (_, index) {
+                      return Image.asset(
+                        images[index],
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  ),
+
+                  // ---------- DOT INDICATOR ----------
+                  Positioned(
+                    bottom: 5,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(images.length, (i) {
+                        final active = i == _currentImage;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: active ? 10 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: active
+                                ? widget.accent
+                                : Colors.white.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                      ],
+                        );
+                      }),
                     ),
+                  ),
+                ],
+              ),
             ),
           ),
 
           const SizedBox(height: 8),
 
+          // ---------- PACKAGE NAME ----------
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -1148,6 +1151,7 @@ class _PackageCardState extends State<_PackageCard> {
 
           const SizedBox(height: 4),
 
+          // ---------- PRICE ----------
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -1162,54 +1166,15 @@ class _PackageCardState extends State<_PackageCard> {
 
           const SizedBox(height: 12),
 
+          // ---------- EDIT + DELETE ----------
           SizedBox(
             height: 40,
             child: Row(
               children: [
+                // EDIT BUTTON
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final booked = await FirebaseFirestore.instance
-                          .collection("bookings")
-                          .where("packageId", isEqualTo: widget.data['id'])
-                          .limit(1)
-                          .get();
-
-                      if (booked.docs.isNotEmpty) {
-                        // show warning dialog
-                        showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            title: const Text(
-                              "Editing Not Allowed",
-                              style: TextStyle(
-                                fontFamily: "Poppins",
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            content: const Text(
-                              "This package has already been booked by one or more parents. "
-                              "Editing is disabled to avoid conflicts.",
-                              style: TextStyle(fontFamily: "Poppins"),
-                            ),
-                            actions: [
-                              TextButton(
-                                child: const Text(
-                                  "OK",
-                                  style: TextStyle(fontFamily: "Poppins"),
-                                ),
-                                onPressed: () => Navigator.pop(context),
-                              ),
-                            ],
-                          ),
-                        );
-                      } else {
-                        widget.onEdit();
-                      }
-                    },
+                    onPressed: widget.onEdit,
                     icon: Icon(Icons.edit, size: 16, color: widget.accent),
                     label: Text(
                       "Edit",
@@ -1219,8 +1184,6 @@ class _PackageCardState extends State<_PackageCard> {
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      minimumSize: const Size(0, 40),
                       side: BorderSide(color: widget.accent),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -1228,15 +1191,15 @@ class _PackageCardState extends State<_PackageCard> {
                     ),
                   ),
                 ),
+
                 const SizedBox(width: 8),
+
+                // DELETE BUTTON
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: widget.onDelete,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 16,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Icons.delete_outline,
+                        size: 16, color: Colors.white),
                     label: const Text(
                       "Delete",
                       style: TextStyle(
@@ -1245,8 +1208,6 @@ class _PackageCardState extends State<_PackageCard> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      minimumSize: const Size(0, 40),
                       backgroundColor: Colors.redAccent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
