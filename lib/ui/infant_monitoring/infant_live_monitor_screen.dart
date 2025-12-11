@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
-class InfantLiveMonitorScreen extends StatelessWidget {
+class InfantLiveMonitorScreen extends StatefulWidget {
   final String infantId;
   final Map<String, dynamic> infantData;
 
@@ -11,14 +14,103 @@ class InfantLiveMonitorScreen extends StatelessWidget {
   });
 
   @override
+  _InfantLiveMonitorScreenState createState() =>
+      _InfantLiveMonitorScreenState();
+}
+
+class _InfantLiveMonitorScreenState extends State<InfantLiveMonitorScreen> {
+  late http.Client _httpClient;
+
+  Uint8List? currentFrame;
+
+  @override
+  void initState() {
+    super.initState();
+    _httpClient = http.Client();
+    _startMJPEGStream();
+  }
+
+  @override
+  void dispose() {
+    _httpClient.close();
+    super.dispose();
+  }
+
+  Future<void> _startMJPEGStream() async {
+    const streamUrl = "http://172.20.10.4:8080/stream.mjpg";
+
+    final request = http.Request("GET", Uri.parse(streamUrl));
+    request.headers["Connection"] = "keep-alive";
+
+    try {
+      final response = await _httpClient.send(request);
+
+      if (response.statusCode == 200) {
+        List<int> buffer = [];
+
+        response.stream.listen((chunk) {
+          buffer.addAll(chunk);
+          _extractJPEG(buffer);
+        }, onError: (e) {
+          print("Stream error: $e");
+          Future.delayed(const Duration(seconds: 1), _startMJPEGStream);
+        }, onDone: () {
+          print("Stream closed by server.");
+          Future.delayed(const Duration(seconds: 1), _startMJPEGStream);
+        });
+      } else {
+        print("Failed to connect to MJPEG stream.");
+      }
+    } catch (e) {
+      print("Connection error: $e");
+      Future.delayed(const Duration(seconds: 1), _startMJPEGStream);
+    }
+  }
+
+  void _extractJPEG(List<int> data) {
+    try {
+      int start = _find(data, [0xFF, 0xD8]); // JPEG start marker
+      if (start == -1) return;
+
+      int end = _find(data, [0xFF, 0xD9], start + 2); // JPEG end marker
+      if (end == -1) return;
+
+      List<int> jpeg = data.sublist(start, end + 2);
+
+      // remove processed bytes
+      data.removeRange(0, end + 2);
+
+      setState(() {
+        currentFrame = Uint8List.fromList(jpeg); // update frame
+      });
+    } catch (e) {
+      print("JPEG parse error: $e");
+    }
+  }
+
+  int _find(List<int> data, List<int> seq, [int start = 0]) {
+    for (int i = start; i < data.length - seq.length; i++) {
+      bool matched = true;
+      for (int j = 0; j < seq.length; j++) {
+        if (data[i + j] != seq[j]) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) return i;
+    }
+    return -1;
+  }
+
+  @override
   Widget build(BuildContext context) {
     const accent = Color(0xFFC2868B);
     const lightPink = Color(0xFFFADADD);
 
-    final String name = (infantData['name'] ?? 'Infant').toString();
-    final String gender = (infantData['gender'] ?? '-').toString();
-    final String weight = (infantData['weight'] ?? '-').toString();
-    final String height = (infantData['height'] ?? '-').toString();
+    final String name = (widget.infantData['name'] ?? 'Infant').toString();
+    final String gender = (widget.infantData['gender'] ?? '-').toString();
+    final String weight = (widget.infantData['weight'] ?? '-').toString();
+    final String height = (widget.infantData['height'] ?? '-').toString();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
@@ -26,9 +118,9 @@ class InfantLiveMonitorScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         foregroundColor: accent,
         elevation: 0,
-        title: Text(
+        title: const Text(
           "Infant Monitoring",
-          style: const TextStyle(fontFamily: 'Poppins'),
+          style: TextStyle(fontFamily: 'Poppins'),
         ),
         centerTitle: true,
       ),
@@ -36,7 +128,6 @@ class InfantLiveMonitorScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Top: Infant quick info
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
@@ -104,94 +195,32 @@ class InfantLiveMonitorScreen extends StatelessWidget {
 
             const SizedBox(height: 18),
 
-            // Middle: Camera placeholder (for Pi stream later)
             Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: currentFrame == null
+                    ? Container(
                   color: Colors.black,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 8,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Stack(
                   alignment: Alignment.center,
-                  children: [
-                    // Placeholder gradient / background
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.black.withOpacity(0.9),
-                            Colors.black.withOpacity(0.6),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
+                  child: const Text(
+                    "Connecting to camera...",
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontFamily: "Poppins",
+                      fontSize: 14,
                     ),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(
-                          Icons.videocam_outlined,
-                          color: Colors.white70,
-                          size: 52,
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          "Live camera feed\n(coming soon from Pi)",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: const [
-                            Icon(Icons.circle,
-                                size: 10, color: Colors.white),
-                            SizedBox(width: 4),
-                            Text(
-                              "OFFLINE",
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                )
+                    : Image.memory(
+                  currentFrame!,
+                  gaplessPlayback: true,
+                  fit: BoxFit.cover,
                 ),
               ),
             ),
 
             const SizedBox(height: 16),
 
-            // Bottom: dummy AI status chips (for future Pi+AI data)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -211,19 +240,6 @@ class InfantLiveMonitorScreen extends StatelessWidget {
                   color: Colors.orange,
                 ),
               ],
-            ),
-
-            const SizedBox(height: 8),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "This is a placeholder. Later you'll plug in your Pi video stream\nand real-time AI detections here.",
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 11,
-                  color: Colors.black54,
-                ),
-              ),
             ),
           ],
         ),
