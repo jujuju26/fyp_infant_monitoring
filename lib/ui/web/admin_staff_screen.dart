@@ -90,7 +90,7 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
         await _firestore.collection("parent").doc(parentId).get();
 
         final parentData = parentDoc.data();
-        final name = parentData?["name"] ?? parentData?["email"] ?? "Parent";
+        final name = parentData?["username"] ?? parentData?["email"] ?? "Parent";
 
         result[parentId] = name;
       }
@@ -244,123 +244,171 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
       builder: (dialogCtx) {
         String? selectedParentId;
         String? selectedInfantId;
+        Map<String, dynamic>? selectedInfantData;
 
-        return StatefulBuilder(builder: (dialogCtx, setStateDialog) {
-          return AlertDialog(
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text("Assign Infant to $staffName",
+        return StatefulBuilder(
+          builder: (dialogCtx, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Text(
+                "Assign Infant to $staffName",
                 style: const TextStyle(
-                    fontFamily: "Poppins", fontWeight: FontWeight.w600)),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Parent dropdown
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _firestore.collection("parent").snapshots(),
-                    builder: (ctx, snapParents) {
-                      if (!snapParents.hasData)
-                        return const LinearProgressIndicator();
+                  fontFamily: "Poppins",
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _firestore.collection("parent").snapshots(),
+                        builder: (ctx, snapParents) {
+                          if (!snapParents.hasData) {
+                            return const LinearProgressIndicator();
+                          }
 
-                      final parents = snapParents.data!.docs;
+                          final parents = snapParents.data!.docs;
 
-                      return DropdownButtonFormField<String>(
-                        value: selectedParentId,
-                        decoration: const InputDecoration(
-                          labelText: "Select Parent",
-                          border: OutlineInputBorder(),
-                        ),
-                        items: parents.map((p) {
-                          final data = p.data() as Map<String, dynamic>;
-                          return DropdownMenuItem(
-                            value: p.id,
-                            child: Text(
-                                data["name"] ??
-                                    data["email"] ??
-                                    "Parent",
-                                style:
-                                const TextStyle(fontFamily: "Poppins")),
+                          return DropdownButtonFormField<String>(
+                            value: selectedParentId,
+                            decoration: const InputDecoration(
+                              labelText: "Select Parent",
+                              border: OutlineInputBorder(),
+                            ),
+                            items: parents.map((p) {
+                              final data = p.data() as Map<String, dynamic>;
+                              return DropdownMenuItem(
+                                value: p.id,
+                                child: Text(
+                                  data["username"] ?? "Parent",
+                                  style:
+                                  const TextStyle(fontFamily: "Poppins"),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setStateDialog(() {
+                                selectedParentId = val;
+                                selectedInfantId = null;
+                                selectedInfantData = null;
+                              });
+                            },
                           );
-                        }).toList(),
-                        onChanged: (val) {
-                          setStateDialog(() {
-                            selectedParentId = val;
-                            selectedInfantId = null;
-                          });
                         },
-                      );
-                    },
-                  ),
+                      ),
 
-                  const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                  // Infant dropdown
-                  if (selectedParentId != null)
-                    StreamBuilder<QuerySnapshot>(
-                      stream: _firestore
-                          .collection("parent")
-                          .doc(selectedParentId)
-                          .collection("infants")
-                          .snapshots(),
-                      builder: (ctx, snapInfants) {
-                        if (!snapInfants.hasData)
-                          return const LinearProgressIndicator();
+                      // =========================
+                      // INFANT DROPDOWN
+                      // =========================
+                      if (selectedParentId != null)
+                        StreamBuilder<QuerySnapshot>(
+                          stream: _firestore
+                              .collection("parent")
+                              .doc(selectedParentId)
+                              .collection("infants")
+                              .snapshots(),
+                          builder: (ctx, snapInfants) {
+                            if (!snapInfants.hasData) {
+                              return const LinearProgressIndicator();
+                            }
 
-                        final infants = snapInfants.data!.docs;
+                            final infants = snapInfants.data!.docs;
 
-                        return DropdownButtonFormField<String>(
-                          value: selectedInfantId,
-                          decoration: const InputDecoration(
-                            labelText: "Select Infant",
-                            border: OutlineInputBorder(),
-                          ),
-                          items: infants.map((inf) {
-                            final d = inf.data() as Map<String, dynamic>;
-                            return DropdownMenuItem(
-                              value: inf.id,
-                              child: Text(d["name"] ?? "Infant",
-                                  style: const TextStyle(fontFamily: "Poppins")),
+                            return DropdownButtonFormField<String>(
+                              value: selectedInfantId,
+                              decoration: const InputDecoration(
+                                labelText: "Select Infant",
+                                border: OutlineInputBorder(),
+                              ),
+                              items: infants.map((inf) {
+                                final d =
+                                inf.data() as Map<String, dynamic>;
+                                return DropdownMenuItem(
+                                  value: inf.id,
+                                  child: Text(
+                                    d["name"] ?? "Infant",
+                                    style: const TextStyle(
+                                        fontFamily: "Poppins"),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) async {
+                                final doc = await _firestore
+                                    .collection("parent")
+                                    .doc(selectedParentId)
+                                    .collection("infants")
+                                    .doc(val)
+                                    .get();
+
+                                setStateDialog(() {
+                                  selectedInfantId = val;
+                                  selectedInfantData =
+                                  doc.data() as Map<String, dynamic>?;
+                                });
+                              },
                             );
-                          }).toList(),
-                          onChanged: (val) =>
-                              setStateDialog(() => selectedInfantId = val),
-                        );
-                      },
-                    )
-                  else
-                    const Text("Select parent first",
-                        style: TextStyle(
-                            fontFamily: "Poppins", color: Colors.black54)),
-                ],
+                          },
+                        )
+                      else
+                        const Text(
+                          "Select parent first",
+                          style: TextStyle(
+                            fontFamily: "Poppins",
+                            color: Colors.black54,
+                          ),
+                        ),
+
+                      // =========================
+                      // INFANT DETAILS PREVIEW
+                      // =========================
+                      if (selectedInfantData != null) ...[
+                        const SizedBox(height: 20),
+                        _buildInfantPreviewCard(selectedInfantData!),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                child:
-                const Text("Cancel", style: TextStyle(fontFamily: "Poppins")),
-                onPressed: () => Navigator.pop(dialogCtx),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: accent),
-                onPressed:
-                selectedParentId == null || selectedInfantId == null
-                    ? null
-                    : () async {
-                  await _assignInfantToStaff(
-                    staffId: staffId,
-                    parentId: selectedParentId!,
-                    parentInfantId: selectedInfantId!,
-                  );
-                  Navigator.pop(dialogCtx);
-                },
-                child: const Text("Assign",
-                    style: TextStyle(color: Colors.white, fontFamily: "Poppins")),
-              ),
-            ],
-          );
-        });
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(fontFamily: "Poppins"),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: accent),
+                  onPressed: selectedParentId == null ||
+                      selectedInfantId == null
+                      ? null
+                      : () async {
+                    await _assignInfantToStaff(
+                      staffId: staffId,
+                      parentId: selectedParentId!,
+                      parentInfantId: selectedInfantId!,
+                    );
+                    Navigator.pop(dialogCtx);
+                  },
+                  child: const Text(
+                    "Assign",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontFamily: "Poppins",
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
       },
     );
   }
@@ -408,6 +456,23 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
         .delete();
   }
 
+  int _calculateAge(Timestamp birthDate) {
+    final dob = birthDate.toDate();
+    final today = DateTime.now();
+    int age = today.year - dob.year;
+    if (today.month < dob.month ||
+        (today.month == dob.month && today.day < dob.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  String _formatDate(Timestamp? t) {
+    if (t == null) return "-";
+    final d = t.toDate();
+    return "${d.day}/${d.month}/${d.year}";
+  }
+
   Widget buildInfantCards(List<QueryDocumentSnapshot> infants, String staffId) {
     return FutureBuilder<Map<String, String>>(
       future: _loadParentNames(infants),
@@ -419,13 +484,18 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
           runSpacing: 16,
           children: infants.map((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            final name = data["name"] ?? "Infant";
-            final parentId = data["parentId"] ?? "-";
 
+            final name = data["name"] ?? "Infant";
+            final gender = data["gender"] ?? "-";
+            final birthDate = data["birthDate"] as Timestamp?;
+            final height = data["height"]?.toString() ?? "-";
+            final weight = data["weight"]?.toString() ?? "-";
+            final assignedAt = data["assignedAt"] as Timestamp?;
+            final parentId = data["parentId"];
             final parentName = parentNames[parentId] ?? "Unknown Parent";
 
             return Container(
-              width: 240,
+              width: 300,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -442,7 +512,7 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Avatar + baby name
+                  // Header
                   Row(
                     children: [
                       CircleAvatar(
@@ -473,17 +543,20 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Parent name (instead of parent ID)
-                  Text(
-                    "Parent: $parentName",
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.black54,
-                      fontFamily: "Poppins",
-                    ),
+                  _detailRow("Parent", parentName),
+                  _detailRow("Gender", gender),
+                  _detailRow(
+                    "Age",
+                    birthDate != null
+                        ? "${_calculateAge(birthDate)} years"
+                        : "-",
                   ),
+                  _detailRow("Birth Date", _formatDate(birthDate)),
+                  _detailRow("Height", "$height m"),
+                  _detailRow("Weight", "$weight kg"),
+                  _detailRow("Assigned At", _formatDate(assignedAt)),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
                   Align(
                     alignment: Alignment.centerRight,
@@ -499,7 +572,8 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: () => _removeAssignment(staffId, doc.id, name),
+                      onPressed: () =>
+                          _removeAssignment(staffId, doc.id, name),
                     ),
                   ),
                 ],
@@ -511,9 +585,121 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
     );
   }
 
-  // ============================================================
-  // MAIN UI
-  // ============================================================
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 95,
+            child: Text(
+              "$label:",
+              style: const TextStyle(
+                fontFamily: "Poppins",
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontFamily: "Poppins",
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfantPreviewCard(Map<String, dynamic> data) {
+    final name = data["name"] ?? "-";
+    final gender = data["gender"] ?? "-";
+    final birthDate = data["birthDate"] as Timestamp?;
+    final height = data["height"]?.toString() ?? "-";
+    final weight = data["weight"]?.toString() ?? "-";
+
+    String formatDate(Timestamp? t) {
+      if (t == null) return "-";
+      final d = t.toDate();
+      return "${d.day}/${d.month}/${d.year}";
+    }
+
+    int? age;
+    if (birthDate != null) {
+      final dob = birthDate.toDate();
+      final today = DateTime.now();
+      age = today.year - dob.year;
+      if (today.month < dob.month ||
+          (today.month == dob.month && today.day < dob.day)) {
+        age--;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDF2F5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.red.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Infant Details",
+            style: TextStyle(
+              fontFamily: "Poppins",
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _previewRow("Name", name),
+          _previewRow("Gender", gender),
+          _previewRow("Age", age != null ? "$age years" : "-"),
+          _previewRow("Birth Date", formatDate(birthDate)),
+          _previewRow("Height", "$height m"),
+          _previewRow("Weight", "$weight kg"),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              "$label:",
+              style: const TextStyle(
+                fontFamily: "Poppins",
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontFamily: "Poppins",
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     List<Map<String, dynamic>> filtered = staffList
