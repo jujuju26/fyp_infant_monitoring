@@ -6,7 +6,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../danger_report_screen.dart';
 import '../logout_success_screen.dart';
+import 'staff_danger_report_screen.dart';
 
 class StaffReportScreen extends StatefulWidget {
   const StaffReportScreen({super.key});
@@ -826,6 +828,26 @@ Widget _buildAppDrawer(BuildContext context) {
             ),
           ),
         ),
+
+        // Danger Report
+        ListTile(
+          leading: const Icon(Icons.report, color: Color(0xFFC2868B)),
+          title: const Text(
+            "Danger Report",
+            style: TextStyle(fontFamily: "Poppins"),
+          ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const StaffDangerReportScreen(),
+              ),
+            );
+          },
+        ),
+
+        const Divider(),
+
         ListTile(
           leading: const Icon(
             Icons.logout,

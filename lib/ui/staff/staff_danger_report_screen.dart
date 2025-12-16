@@ -10,15 +10,17 @@ class StaffDangerReportScreen extends StatefulWidget {
   const StaffDangerReportScreen({super.key});
 
   @override
-  State<StaffDangerReportScreen> createState() => _StaffDangerReportScreen();
+  State<StaffDangerReportScreen> createState() =>
+      _StaffDangerReportScreenState();
 }
 
-class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
+class _StaffDangerReportScreenState extends State<StaffDangerReportScreen> {
   static const accent = Color(0xFFC2868B);
   static const lightPink = Color(0xFFFADADD);
 
   List<String> monthsUsed = [];
   List<int> dangerCounts = [];
+
   bool _isLoading = true;
   String? _error;
 
@@ -28,42 +30,36 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
     _prepareMonthsAndLoad();
   }
 
+  // ------------------------------------------------------------
+  // Prepare last 6 months labels + load data
+  // ------------------------------------------------------------
   void _prepareMonthsAndLoad() {
     final now = DateTime.now();
-    final List<DateTime> monthsDateTimes = List.generate(6, (i) {
-      final monthOffset = 5 - i;
-      return DateTime(now.year, now.month - monthOffset, 1);
+
+    final List<DateTime> monthDates = List.generate(6, (i) {
+      int offset = 5 - i;
+      return DateTime(now.year, now.month - offset, 1);
     });
 
-    monthsUsed = monthsDateTimes.map((d) => _shortMonthLabel(d)).toList();
+    monthsUsed = monthDates.map((d) => _shortMonth(d.month)).toList();
     dangerCounts = List<int>.filled(monthsUsed.length, 0);
 
-    _loadDangerData(monthsDateTimes.first,
-        DateTime(now.year, now.month + 1, 1));
+    _loadDangerData(monthDates.first, DateTime(now.year, now.month + 1, 1));
   }
 
-  String _shortMonthLabel(DateTime dt) {
-    const labels = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
+  String _shortMonth(int m) {
+    const names = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
-    return labels[dt.month - 1];
+    return names[m - 1];
   }
 
-  String _monthKey(DateTime dt) =>
-      "${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}";
-
-  Future<void> _loadDangerData(DateTime startInclusive, DateTime endExclusive) async {
+  // ------------------------------------------------------------
+  // LOAD FIRESTORE DATA
+  // ------------------------------------------------------------
+  Future<void> _loadDangerData(
+      DateTime startInclusive, DateTime endExclusive) async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -71,10 +67,11 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("User not logged in");
+      if (user == null) throw Exception("Not logged in.");
 
       final staffId = user.uid;
 
+      // Load infant assigned to staff
       final infantsSnap = await FirebaseFirestore.instance
           .collection('staff')
           .doc(staffId)
@@ -91,30 +88,36 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
 
       final infantId = infantsSnap.docs.first.id;
 
+      // Convert date range → UNIX seconds
+      final startUnix = startInclusive.millisecondsSinceEpoch ~/ 1000;
+      final endUnix = endExclusive.millisecondsSinceEpoch ~/ 1000;
+
+      // Query using timestamp_unix
       final dangerSnap = await FirebaseFirestore.instance
           .collection('staff')
           .doc(staffId)
           .collection('infants')
           .doc(infantId)
           .collection('detections')
-          .where('timestamp',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startInclusive))
-          .where('timestamp',
-          isLessThan: Timestamp.fromDate(endExclusive))
-          .where('type', isEqualTo: "danger")
+          .where('timestamp_unix', isGreaterThanOrEqualTo: startUnix)
+          .where('timestamp_unix', isLessThan: endUnix)
+          .where('type', isEqualTo: 'danger')
           .get();
 
       dangerCounts = List<int>.filled(monthsUsed.length, 0);
 
       for (final doc in dangerSnap.docs) {
         final data = doc.data();
-        final ts = data["timestamp"];
-        if (ts is! Timestamp) continue;
+        final unix = data['timestamp_unix'];
 
-        final dt = ts.toDate();
-        final index =
-        monthsUsed.indexOf(_shortMonthLabel(DateTime(dt.year, dt.month, 1)));
-        if (index >= 0) {
+        if (unix == null) continue;
+
+        final dt = DateTime.fromMillisecondsSinceEpoch(unix * 1000);
+
+        final monthLabel = _shortMonth(dt.month);
+        final index = monthsUsed.indexOf(monthLabel);
+
+        if (index != -1) {
           dangerCounts[index] += 1;
         }
       }
@@ -123,92 +126,92 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = "Error loading data: $e";
+        _error = "Error: $e";
       });
     }
   }
 
-  // PDF Export
+  // ------------------------------------------------------------
+  // PDF EXPORT
+  // ------------------------------------------------------------
   Future<void> _exportPdf() async {
     final pdf = pw.Document();
-    final totalDangers = dangerCounts.fold<int>(0, (a, b) => a + b);
-    final average = (totalDangers / dangerCounts.length).toStringAsFixed(1);
-    final maxDangers = dangerCounts.isEmpty
-        ? 0
-        : dangerCounts.reduce((a, b) => a > b ? a : b);
-    final maxMonth = dangerCounts.isEmpty
-        ? "-"
-        : monthsUsed[dangerCounts.indexOf(maxDangers)];
+
+    final total = dangerCounts.fold<int>(0, (a, b) => a + b);
+    final avg = total / dangerCounts.length;
+    final maxValue =
+    dangerCounts.isEmpty ? 0 : dangerCounts.reduce((a, b) => a > b ? a : b);
+    final maxMonth =
+    dangerCounts.isEmpty ? "-" : monthsUsed[dangerCounts.indexOf(maxValue)];
 
     pdf.addPage(
       pw.Page(
         margin: const pw.EdgeInsets.all(32),
-        build: (context) {
+        build: (_) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Center(
-                child: pw.Text(
-                  "Infant Danger Analysis Report",
-                  style: pw.TextStyle(
-                      fontSize: 24,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColor.fromInt(0xFFC2868B)),
-                ),
-              ),
-              pw.SizedBox(height: 24),
+                  child: pw.Text("Infant Danger Analysis Report",
+                      style: pw.TextStyle(
+                          fontSize: 24,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColor.fromInt(0xFFC2868B)))),
 
-              // Summary Cards
+              pw.SizedBox(height: 20),
+
               pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    _pdfStatCard("Total Dangers", "$totalDangers"),
-                    _pdfStatCard("Average/Month", "$average"),
-                    _pdfStatCard("Max Month", "$maxMonth ($maxDangers)"),
-                  ]),
-              pw.SizedBox(height: 24),
-
-              pw.Text("Monthly Danger Frequency",
-                  style: pw.TextStyle(
-                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 12),
-              pw.Table(
-                border: pw.TableBorder.all(),
+                mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
                 children: [
-                  pw.TableRow(children: [
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text("Month",
-                            textAlign: pw.TextAlign.center)),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text("Dangers",
-                            textAlign: pw.TextAlign.center)),
-                  ]),
-                  ...List.generate(dangerCounts.length, (i) {
-                    return pw.TableRow(children: [
-                      pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(monthsUsed[i],
-                              textAlign: pw.TextAlign.center)),
-                      pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text("${dangerCounts[i]}",
-                              textAlign: pw.TextAlign.center)),
-                    ]);
-                  }),
+                  _pdfStat("Total Dangers", total.toString()),
+                  _pdfStat("Average / Month", avg.toStringAsFixed(1)),
+                  _pdfStat("Highest Month", "$maxMonth ($maxValue)"),
                 ],
               ),
+
+              pw.SizedBox(height: 24),
+
+              pw.Text("Monthly Breakdown",
+                  style: pw.TextStyle(
+                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
+
+              pw.SizedBox(height: 12),
+
+              pw.Table(
+                  border: pw.TableBorder.all(),
+                  children: [
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text("Month")),
+                        pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text("Dangers")),
+                      ],
+                    ),
+                    ...List.generate(dangerCounts.length, (i) {
+                      return pw.TableRow(children: [
+                        pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text(monthsUsed[i])),
+                        pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text("${dangerCounts[i]}")),
+                      ]);
+                    })
+                  ])
             ],
           );
         },
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
-  pw.Widget _pdfStatCard(String title, String value) {
+  pw.Widget _pdfStat(String title, String value) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
@@ -216,43 +219,30 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
         borderRadius: pw.BorderRadius.circular(12),
       ),
       child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(title,
-                style: pw.TextStyle(
-                    fontSize: 12, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 6),
-            pw.Text(value,
-                style: pw.TextStyle(
-                    fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          ]),
-    );
-  }
-
-  void _showDangerDetail(int index) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text("Danger Details - ${monthsUsed[index]}"),
-        content: Text("Danger Events: ${dangerCounts[index]}"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK"))
+        children: [
+          pw.Text(title,
+              style: pw.TextStyle(
+                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          pw.Text(value,
+              style:
+              pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
         ],
       ),
     );
   }
 
+  // ------------------------------------------------------------
+  // UI
+  // ------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final totalDangers = dangerCounts.fold<int>(0, (a, b) => a + b);
-    final average =
-    dangerCounts.isEmpty ? 0 : (totalDangers / dangerCounts.length).toStringAsFixed(1);
-    final maxDangers =
+    final total = dangerCounts.fold<int>(0, (a, b) => a + b);
+    final double avg = total == 0 ? 0 : (total / dangerCounts.length);
+    final maxValue =
     dangerCounts.isEmpty ? 0 : dangerCounts.reduce((a, b) => a > b ? a : b);
     final maxMonth =
-    dangerCounts.isEmpty ? "-" : monthsUsed[dangerCounts.indexOf(maxDangers)];
+    dangerCounts.isEmpty ? "-" : monthsUsed[dangerCounts.indexOf(maxValue)];
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -260,156 +250,106 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: accent),
-        title: SizedBox(
-          width: double.infinity,
-          child: Center(
-            child: Column(
-              children: [
-                const Text(
-                  "Danger Analysis Report",
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    color: Color(0xFFC2868B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
+        title: const Text("Danger Analysis Report",
+            style: TextStyle(
+                fontFamily: "Poppins",
+                color: accent,
+                fontSize: 18,
+                fontWeight: FontWeight.w600)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
-          child: Text(_error!,
-              style: const TextStyle(color: Colors.red)))
-          : SingleChildScrollView(
-        padding:
-        const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Summary Cards
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _statCard("Total Dangers", "$totalDangers"),
-                _statCard("Average/Month", "$average"),
-                _statCard("Max Month", "$maxMonth ($maxDangers)"),
-              ],
-            ),
-            const SizedBox(height: 24),
+        child: Text(_error!,
+            style: const TextStyle(color: Colors.red)),
+      )
+          : _buildReportUI(total, avg, maxMonth, maxValue),
+    );
+  }
 
-            // Bar Chart
-            Text("Monthly Danger Trend",
-                style: TextStyle(
-                    fontFamily: "Poppins",
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: accent)),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 180,
-              child: BarChart(
-                BarChartData(
-                  barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        return BarTooltipItem(
-                          "${monthsUsed[group.x.toInt()]}\n${rod.toY.toInt()} events",
-                          const TextStyle(color: Colors.white),
-                        );
-                      },
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    leftTitles:
-                    AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles:
-                    AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles:
-                    AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          final idx = value.toInt();
-                          if (idx >= 0 && idx < monthsUsed.length) {
-                            return Text(
-                              monthsUsed[idx],
-                              style: const TextStyle(
-                                  color: accent,
-                                  fontSize: 12,
-                                  fontFamily: "Poppins"),
-                            );
-                          }
-                          return const SizedBox();
-                        },
-                      ),
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  barGroups: List.generate(
+  Widget _buildReportUI(int total, double avg, String maxMonth, int maxValue) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          // Summary Row
+          Row(
+            children: [
+              _statCard("Total Dangers", "$total"),
+              _statCard("Average/Month", avg.toStringAsFixed(1)),
+              _statCard("Max Month", "$maxMonth ($maxValue)"),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Bar Chart
+          SizedBox(
+            height: 200,
+            child: BarChart(
+              BarChartData(
+                barGroups: List.generate(
                     dangerCounts.length,
                         (i) => BarChartGroupData(x: i, barRods: [
                       BarChartRodData(
                           toY: dangerCounts[i].toDouble(),
-                          color: accent.withOpacity(0.7),
                           width: 18,
-                          borderRadius: BorderRadius.circular(6))
-                    ]),
+                          color: accent)
+                    ])),
+                titlesData: FlTitlesData(
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, _) {
+                        int idx = value.toInt();
+                        return Text(monthsUsed[idx],
+                            style: const TextStyle(
+                                fontSize: 12, color: accent));
+                      },
+                    ),
                   ),
+                  leftTitles:
+                  AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles:
+                  AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles:
+                  AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 ),
+                borderData: FlBorderData(show: false),
               ),
             ),
-            const SizedBox(height: 24),
+          ),
 
-            // Detailed list
-            Text("Monthly Breakdown",
-                style: TextStyle(
-                    fontFamily: "Poppins",
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: accent)),
-            const SizedBox(height: 12),
-            ...List.generate(monthsUsed.length, (i) {
-              return Card(
-                color: lightPink.withOpacity(0.3),
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                child: ListTile(
-                  title: Text(monthsUsed[i],
-                      style: const TextStyle(
-                          fontFamily: "Poppins",
-                          fontWeight: FontWeight.w600)),
-                  trailing: Text("${dangerCounts[i]} events",
-                      style: const TextStyle(
-                          fontFamily: "Poppins",
-                          fontWeight: FontWeight.w700)),
-                  onTap: () => _showDangerDetail(i),
-                ),
-              );
-            }),
-            const SizedBox(height: 20),
-            Center(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 26, vertical: 12),
-                ),
-                icon: const Icon(Icons.picture_as_pdf),
-                label: const Text("Export PDF"),
-                onPressed: _exportPdf,
+          const SizedBox(height: 24),
+
+          // Detailed List
+          ...List.generate(monthsUsed.length, (i) {
+            return Card(
+              color: lightPink.withOpacity(0.3),
+              child: ListTile(
+                title: Text(monthsUsed[i],
+                    style: const TextStyle(
+                        fontFamily: "Poppins",
+                        fontWeight: FontWeight.w600)),
+                trailing: Text("${dangerCounts[i]} events",
+                    style: const TextStyle(
+                        fontFamily: "Poppins",
+                        fontWeight: FontWeight.bold)),
               ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+            );
+          }),
+
+          const SizedBox(height: 20),
+
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: accent, foregroundColor: Colors.white),
+            icon: const Icon(Icons.picture_as_pdf),
+            label: const Text("Export PDF"),
+            onPressed: _exportPdf,
+          )
+        ],
       ),
     );
   }
@@ -418,7 +358,7 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: lightPink.withOpacity(0.3),
           borderRadius: BorderRadius.circular(12),
@@ -427,15 +367,15 @@ class _StaffDangerReportScreen extends State<StaffDangerReportScreen> {
           children: [
             Text(title,
                 style: const TextStyle(
+                    fontSize: 13,
                     fontFamily: "Poppins",
-                    fontSize: 14,
                     fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(value,
                 style: const TextStyle(
-                    fontFamily: "Poppins",
                     fontSize: 20,
-                    fontWeight: FontWeight.w700)),
+                    fontFamily: "Poppins",
+                    fontWeight: FontWeight.w800)),
           ],
         ),
       ),

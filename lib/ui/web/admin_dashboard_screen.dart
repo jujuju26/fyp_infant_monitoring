@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_infant_monitoring/ui/web/admin_packages_screen.dart';
 import 'package:intl/intl.dart';
+import 'admin_inventory_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_meal_screen.dart';
 import 'admin_profile_screen.dart';
@@ -895,6 +896,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       {'icon': Icons.people, 'label': 'Staff', 'selected': false},
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': false,},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false},
+      {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
@@ -924,7 +926,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
           ),
-          const Spacer(),
           Divider(color: Colors.grey[300]),
           ListTile(
             leading: const Icon(
@@ -992,6 +993,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const AdminMealScreen()),
+        );
+        break;
+        case 'Inventory':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminInventoryScreen()),
         );
         break;
       case 'Report':

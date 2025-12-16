@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'staff_inventory_screen.dart';
+
 class StaffMealScreen extends StatefulWidget {
   const StaffMealScreen({Key? key}) : super(key: key);
 
@@ -18,16 +20,10 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
   DateTime _selectedDate = DateTime.now();
   String _statusFilter = 'All'; // All / Pending / Preparing / Ready
 
-  // ---------------------------------------------------------------------------
-  // Logout (you can replace with your real logout navigation)
-  // ---------------------------------------------------------------------------
   void _logout() {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
   String _dateKey(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 
   String _formatDate(DateTime d) =>
@@ -91,9 +87,6 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
     }
   }
 
-  // =====================================================================
-  //                           MAIN UI
-  // =====================================================================
   @override
   Widget build(BuildContext context) {
     final String key = _dateKey(_selectedDate);
@@ -106,9 +99,6 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
 
-      // ----------------------------------------------------------------------
-      // Drawer
-      // ----------------------------------------------------------------------
       drawer: Drawer(
         child: Container(
           color: Colors.white,
@@ -136,6 +126,25 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
                   ),
                 ),
               ),
+
+              ListTile(
+                leading: const Icon(Icons.inventory_2, color: accent),
+                title: const Text(
+                  'Inventory',
+                  style: TextStyle(fontFamily: 'Poppins'),
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StaffInventoryScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              const Divider(),
+
               ListTile(
                 leading: const Icon(Icons.logout, color: accent),
                 title: const Text('Logout',
@@ -147,9 +156,6 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
         ),
       ),
 
-      // ----------------------------------------------------------------------
-      // AppBar
-      // ----------------------------------------------------------------------
       appBar: AppBar(
         leading: Builder(
           builder: (context) => IconButton(
@@ -163,9 +169,6 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
         elevation: 0,
       ),
 
-      // ----------------------------------------------------------------------
-      // Body
-      // ----------------------------------------------------------------------
       body: Column(
         children: [
           const SizedBox(height: 8),
@@ -237,9 +240,6 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
     );
   }
 
-  // =====================================================================
-  //                   DATE + FILTER HEADER
-  // =====================================================================
   Widget _buildDateAndFilterRow() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -317,9 +317,6 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
     );
   }
 
-  // =====================================================================
-  //                     MEAL CARD FOR EACH PARENT
-  // =====================================================================
   Widget _buildParentMealCard({
     required String docId,
     required Map<String, dynamic> data,
@@ -336,68 +333,91 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
     final lStatus = (statuses['lunch'] ?? 'PENDING').toString();
     final dStatus = (statuses['dinner'] ?? 'PENDING').toString();
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: lightPink),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Parent: $parentId",
-            style: const TextStyle(
-              fontFamily: 'Poppins',
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('parent').doc(parentId).get(),
+      builder: (context, snapshot) {
+        String parentName = parentId; // fallback
+
+        if (snapshot.hasData && snapshot.data!.exists) {
+          parentName = snapshot.data!.get('username') ?? parentId;
+        }
+
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: lightPink),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 6,
+                offset: Offset(0, 3),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.person, color: accent, size: 18),
+                  const SizedBox(width: 6),
 
-          _buildMealRow(
-            label: "Breakfast",
-            mealKey: "breakfast",
-            mealData: b,
-            currentStatus: bStatus,
-            docId: docId,
-            parentId: parentId,
+                  Expanded(
+                    child: Text(
+                      "Parent: $parentName",
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              _buildMealRow(
+                label: "Breakfast",
+                mealKey: "breakfast",
+                mealData: b,
+                currentStatus: bStatus,
+                docId: docId,
+                parentId: parentId,
+              ),
+
+              const Divider(height: 18),
+
+              _buildMealRow(
+                label: "Lunch",
+                mealKey: "lunch",
+                mealData: l,
+                currentStatus: lStatus,
+                docId: docId,
+                parentId: parentId,
+              ),
+
+              const Divider(height: 18),
+
+              _buildMealRow(
+                label: "Dinner",
+                mealKey: "dinner",
+                mealData: d,
+                currentStatus: dStatus,
+                docId: docId,
+                parentId: parentId,
+              ),
+            ],
           ),
-
-          const Divider(height: 18),
-
-          _buildMealRow(
-            label: "Lunch",
-            mealKey: "lunch",
-            mealData: l,
-            currentStatus: lStatus,
-            docId: docId,
-            parentId: parentId,
-          ),
-
-          const Divider(height: 18),
-
-          _buildMealRow(
-            label: "Dinner",
-            mealKey: "dinner",
-            mealData: d,
-            currentStatus: dStatus,
-            docId: docId,
-            parentId: parentId,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  // =====================================================================
-  //                   SINGLE MEAL ROW (e.g. Breakfast)
-  // =====================================================================
   Widget _buildMealRow({
     required String label,
     required String mealKey,

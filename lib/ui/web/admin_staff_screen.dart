@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_dashboard_screen.dart';
+import 'admin_inventory_screen.dart';
 import 'admin_meal_screen.dart';
 import 'admin_packages_screen.dart';
 import 'admin_report_screen.dart';
@@ -104,6 +105,7 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
       {'icon': Icons.people, 'label': 'Staff'},
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages'},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal'},
+      {'icon': Icons.inventory_2_outlined, 'label': 'Inventory'},
       {'icon': Icons.insert_chart, 'label': 'Report'},
     ];
 
@@ -168,6 +170,9 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
       case 'Meal':
         Navigator.push(
             context, MaterialPageRoute(builder: (_) => const AdminMealScreen()));
+        break;
+      case 'Inventory':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
         break;
       case 'Report':
         Navigator.push(context,

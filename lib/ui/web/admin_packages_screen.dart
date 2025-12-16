@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../storage_image_helper.dart';
 import 'admin_dashboard_screen.dart';
+import 'admin_inventory_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_meal_screen.dart';
 import 'admin_profile_screen.dart';
@@ -78,6 +79,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
           context,
           MaterialPageRoute(builder: (context) => const AdminMealScreen()),
         );
+        break;
+      case 'Inventory':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
         break;
       case 'Report':
         Navigator.push(
@@ -531,12 +535,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
     final items = [
       {'icon': Icons.dashboard, 'label': 'Dashboard', 'selected': false},
       {'icon': Icons.people, 'label': 'Staff', 'selected': false},
-      {
-        'icon': Icons.shopping_bag_outlined,
-        'label': 'Packages',
-        'selected': true,
-      },
+      {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': true,},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false,},
+      {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
@@ -1064,7 +1065,7 @@ class _PackageCardState extends State<_PackageCard> {
     final String name = widget.data['name'] ?? '';
     final double price = (widget.data['price'] as num?)?.toDouble() ?? 0.0;
 
-    // 🔥 Build image list completely independent of Firestore
+    // Build image list completely independent of Firestore
     final List<String> images = _getImages(name);
 
     return Container(

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -7,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'admin_dashboard_screen.dart';
+import 'admin_inventory_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_meal_screen.dart';
 import 'admin_packages_screen.dart';
@@ -46,6 +48,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
   String adminName = '';
   String adminRole = 'Admin';
 
+  // These are “raw overall” values (kept from original logic),
+  // but the UI will now use filtered values computed in build().
   double totalRevenue = 0;
   int totalBookings = 0;
 
@@ -54,7 +58,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
   // All bookings (raw)
   List<BookingInfo> _allBookings = [];
 
-  // For top 3 packages
+  // For top 3 packages (overall raw)
   Map<String, int> packageCounts = {};
   List<String> topPackages = [];
 
@@ -72,6 +76,27 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
     'Rejected',
     'Cancelled',
   ];
+
+  // NEW: Month/Year filters
+  final List<String> _monthOptions = const [
+    'All',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  String _selectedMonth = 'All';
+
+  List<String> _yearOptions = ['All'];
+  String _selectedYear = 'All';
 
   @override
   void initState() {
@@ -116,6 +141,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
           packageCounts = {};
           topPackages = [];
           _packageFilterOptions = ['All'];
+          _yearOptions = ['All'];
           _isLoading = false;
         });
         return;
@@ -138,7 +164,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
       final Map<String, String> parentNameMap = {};
       for (final snap in parentSnaps) {
         if (snap.exists) {
-          parentNameMap[snap.id] = (snap.data() as Map<String, dynamic>)['username'] ?? 'Unknown';
+          parentNameMap[snap.id] =
+              (snap.data() as Map<String, dynamic>)['username'] ?? 'Unknown';
         } else {
           parentNameMap[snap.id] = 'Unknown';
         }
@@ -148,6 +175,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
       int bookingsCount = 0;
       final Map<String, int> pkgCounts = {};
       final List<BookingInfo> bookings = [];
+      final Set<int> yearSet = {};
 
       for (final doc in bookingsSnap.docs) {
         final data = doc.data() as Map<String, dynamic>;
@@ -167,6 +195,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
           bookingDate = ts.toDate();
         }
 
+        yearSet.add(bookingDate.year);
+
         // First package only
         String packageName = 'Unknown';
         final packages = data['packages'];
@@ -182,11 +212,10 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         final double totalPayable = (totalPayableNum).toDouble();
 
         // Status
-        // Status
         String status = (data['status'] ?? 'pending').toString();
         final normalizedStatus = status.toLowerCase();
 
-// Only add revenue & count bookings if status is valid
+        // Only add revenue & count bookings if status is valid
         if (normalizedStatus == 'approved' || normalizedStatus == 'completed') {
           revenue += totalPayable;
           bookingsCount += 1;
@@ -208,9 +237,14 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         );
       }
 
-      // Sort packages by count
+      // Sort packages by count (overall)
       final sortedEntries = pkgCounts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
+
+      // Build year options from actual data
+      final yearsList = yearSet.toList()..sort();
+      final yearOptions =
+      ['All', ...yearsList.map((y) => y.toString()).toList()];
 
       setState(() {
         totalRevenue = revenue;
@@ -220,6 +254,13 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         topPackages = sortedEntries.map((e) => e.key).take(5).toList();
 
         _packageFilterOptions = ['All', ...pkgCounts.keys];
+        _yearOptions = yearOptions;
+
+        // If previously selected year no longer exists, reset to All
+        if (!_yearOptions.contains(_selectedYear)) {
+          _selectedYear = 'All';
+        }
+
         _isLoading = false;
       });
     } catch (e) {
@@ -245,22 +286,42 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
     }
   }
 
+  // Helper: does a booking date match current month/year filter?
+  bool _matchesMonthYear(DateTime d) {
+    // Year filter
+    if (_selectedYear != 'All' && d.year.toString() != _selectedYear) {
+      return false;
+    }
+
+    // Month filter
+    if (_selectedMonth != 'All') {
+      final monthLabel = DateFormat('MMM').format(d); // "Jan", "Feb", ...
+      if (monthLabel != _selectedMonth) return false;
+    }
+
+    return true;
+  }
+
   // -------------- FILTERED BOOKINGS --------------
   List<BookingInfo> get _filteredBookings {
     List<BookingInfo> list = List<BookingInfo>.from(_allBookings);
 
+    // Apply Month/Year filters first
+    list = list.where((b) => _matchesMonthYear(b.date)).toList();
+
+    // Package filter
     if (_selectedPackageFilter != 'All') {
-      list = list
-          .where((b) => b.packageName == _selectedPackageFilter)
-          .toList();
+      list = list.where((b) => b.packageName == _selectedPackageFilter).toList();
     }
 
+    // Status filter (using formatted version)
     if (_selectedStatusFilter != 'All') {
       list = list
           .where((b) => _formatStatus(b.status) == _selectedStatusFilter)
           .toList();
     }
 
+    // Sort by date
     list.sort((a, b) {
       if (_selectedSort == 'Newest') {
         return b.date.compareTo(a.date);
@@ -291,6 +352,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         return 'Processing';
       case 'pending':
         return 'Pending';
+      case 'completed':
+        return 'Completed';
       case 'rejected':
         return 'Rejected';
       case 'cancelled':
@@ -303,6 +366,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
   Color _statusColorBg(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
+      case 'completed':
         return const Color(0xFFE0FFF0);
       case 'processing':
         return const Color(0xFFEDE7FF);
@@ -319,6 +383,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
 
   Color _statusColorText(String status) {
     switch (status.toLowerCase()) {
+      case 'approved':
       case 'completed':
         return const Color(0xFF1E8A4F);
       case 'processing':
@@ -340,7 +405,30 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
 
     final dateNow = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
 
-    final tableData = _filteredBookings
+    // Use same filtered bookings as UI
+    final filtered = _filteredBookings;
+
+    // Recompute summary based on current filters
+    double revenue = 0;
+    int bookingsCount = 0;
+    final Map<String, int> pkgCounts = {};
+
+    for (final b in filtered) {
+      final normalized = b.status.toLowerCase();
+      final isSuccess =
+          normalized == 'approved' || normalized == 'completed';
+      if (isSuccess) {
+        revenue += b.totalPayable;
+        bookingsCount += 1;
+        pkgCounts[b.packageName] = (pkgCounts[b.packageName] ?? 0) + 1;
+      }
+    }
+
+    final sortedEntries = pkgCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topPkgs = sortedEntries.map((e) => e.key).take(5).toList();
+
+    final tableData = filtered
         .map((b) => [
       b.id.substring(0, 6), // short id
       _formatDate(b.date),
@@ -374,6 +462,13 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                     'Generated on $dateNow',
                     style: const pw.TextStyle(fontSize: 10),
                   ),
+                  if (_selectedMonth != 'All' || _selectedYear != 'All')
+                    pw.Text(
+                      'Filter: '
+                          '${_selectedMonth == 'All' ? '' : _selectedMonth} '
+                          '${_selectedYear == 'All' ? '' : _selectedYear}',
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
                 ],
               ),
               pw.Container(
@@ -411,7 +506,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                           )),
                       pw.SizedBox(height: 8),
                       pw.Text(
-                        _formatCurrency(totalRevenue),
+                        _formatCurrency(revenue),
                         style: pw.TextStyle(
                           fontSize: 18,
                           fontWeight: pw.FontWeight.bold,
@@ -440,7 +535,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                           )),
                       pw.SizedBox(height: 8),
                       pw.Text(
-                        '$totalBookings',
+                        '$bookingsCount',
                         style: pw.TextStyle(
                           fontSize: 18,
                           fontWeight: pw.FontWeight.bold,
@@ -463,19 +558,22 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
             ),
           ),
           pw.SizedBox(height: 8),
-          ...topPackages.map((pkg) {
-            final count = packageCounts[pkg] ?? 0;
-            return pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 4),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(pkg),
-                  pw.Text('$count booking${count == 1 ? '' : 's'}'),
-                ],
-              ),
-            );
-          }),
+          if (topPkgs.isEmpty)
+            pw.Text('No package data for this period.')
+          else
+            ...topPkgs.map((pkg) {
+              final count = pkgCounts[pkg] ?? 0;
+              return pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 4),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(pkg),
+                    pw.Text('$count booking${count == 1 ? '' : 's'}'),
+                  ],
+                ),
+              );
+            }),
 
           pw.SizedBox(height: 18),
           pw.Text(
@@ -507,8 +605,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
             cellAlignment: pw.Alignment.centerLeft,
             headerAlignment: pw.Alignment.centerLeft,
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-            cellPadding: const pw.EdgeInsets.symmetric(
-                horizontal: 4, vertical: 3),
+            cellPadding:
+            const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
           ),
         ],
       ),
@@ -530,8 +628,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
           CircleAvatar(
             radius: 22,
             backgroundColor: const Color(0xFFFADADD),
-            child: const Icon(Icons.person,
-                size: 24, color: Color(0xFFC2868B)),
+            child:
+            const Icon(Icons.person, size: 24, color: Color(0xFFC2868B)),
           ),
           const SizedBox(width: 10),
           Column(
@@ -584,12 +682,9 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
     List<Map<String, dynamic>> sidebarItems = [
       {'icon': Icons.dashboard, 'label': 'Dashboard', 'selected': false},
       {'icon': Icons.people, 'label': 'Staff', 'selected': false},
-      {
-        'icon': Icons.shopping_bag_outlined,
-        'label': 'Packages',
-        'selected': false
-      },
+      {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': false},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false,},
+      {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': true},
     ];
 
@@ -617,11 +712,10 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
               },
             ),
           ),
-          const Spacer(),
           Divider(color: Colors.grey[300]),
           ListTile(
-            leading: const Icon(Icons.power_settings_new,
-                color: Colors.black54),
+            leading:
+            const Icon(Icons.power_settings_new, color: Colors.black54),
             title: const Text('Logout',
                 style: TextStyle(fontFamily: 'Poppins')),
             onTap: _logout,
@@ -679,6 +773,9 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
           MaterialPageRoute(builder: (context) => const AdminMealScreen()),
         );
         break;
+      case 'Inventory':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
+        break;
       case 'Report':
         Navigator.push(
           context,
@@ -727,11 +824,12 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
     );
   }
 
-  Widget _buildTopPackagesCard() {
-    final maxCount = topPackages.isEmpty
+  Widget _buildTopPackagesCard(
+      Map<String, int> filteredPackageCounts, List<String> filteredTopPackages) {
+    final maxCount = filteredTopPackages.isEmpty
         ? 1
-        : topPackages
-        .map((p) => packageCounts[p] ?? 0)
+        : filteredTopPackages
+        .map((p) => filteredPackageCounts[p] ?? 0)
         .fold<int>(0, (max, v) => v > max ? v : max);
 
     return Expanded(
@@ -752,7 +850,6 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ---- TITLE ONLY ----
             const Text(
               'Top 3 Packages',
               style: TextStyle(
@@ -763,17 +860,17 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
             ),
             const SizedBox(height: 16),
 
-            if (topPackages.isEmpty)
+            if (filteredTopPackages.isEmpty)
               const Text(
-                'No package data available yet.',
+                'No package data available for this period.',
                 style: TextStyle(fontSize: 14, fontFamily: 'Poppins'),
               )
             else
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: topPackages.take(3).map((pkg) {
-                    final count = packageCounts[pkg] ?? 0;
+                  children: filteredTopPackages.take(3).map((pkg) {
+                    final count = filteredPackageCounts[pkg] ?? 0;
                     final ratio = maxCount == 0 ? 0.0 : count / maxCount;
 
                     return Column(
@@ -870,7 +967,32 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                   'Filter By',
                   style: TextStyle(fontSize: 13, fontFamily: 'Poppins'),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
+
+                // NEW: Month filter
+                _buildSmallDropdown(
+                  label: 'Month',
+                  value: _selectedMonth,
+                  items: _monthOptions,
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _selectedMonth = v);
+                  },
+                ),
+                const SizedBox(width: 8),
+
+                // NEW: Year filter
+                _buildSmallDropdown(
+                  label: 'Year',
+                  value: _selectedYear,
+                  items: _yearOptions,
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _selectedYear = v);
+                  },
+                ),
+                const SizedBox(width: 12),
+
                 _buildSmallDropdown(
                   label: 'Date',
                   value: _selectedSort,
@@ -907,6 +1029,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                       _selectedSort = 'Newest';
                       _selectedPackageFilter = 'All';
                       _selectedStatusFilter = 'All';
+                      _selectedMonth = 'All';
+                      _selectedYear = 'All';
                     });
                   },
                   icon: const Icon(Icons.refresh, size: 18),
@@ -1017,7 +1141,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: _statusColorBg(b.status),
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius:
+                              BorderRadius.circular(16),
                             ),
                             child: Text(
                               statusFormatted,
@@ -1081,6 +1206,30 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
   Widget build(BuildContext context) {
     const accentPink = Color(0xFFC2868B);
 
+    // Use filtered list to compute summary for this view
+    final bookings = _filteredBookings;
+
+    double filteredRevenue = 0;
+    int filteredBookingsCount = 0;
+    final Map<String, int> filteredPkgCounts = {};
+
+    for (final b in bookings) {
+      final normalized = b.status.toLowerCase();
+      final isSuccess =
+          normalized == 'approved' || normalized == 'completed';
+      if (isSuccess) {
+        filteredRevenue += b.totalPayable;
+        filteredBookingsCount += 1;
+        filteredPkgCounts[b.packageName] =
+            (filteredPkgCounts[b.packageName] ?? 0) + 1;
+      }
+    }
+
+    final sortedFilteredEntries = filteredPkgCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final filteredTopPkgs =
+    sortedFilteredEntries.map((e) => e.key).take(5).toList();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
       body: Row(
@@ -1100,7 +1249,8 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                       children: [
                         // Title Row
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                          crossAxisAlignment:
+                          CrossAxisAlignment.center,
                           children: [
                             Text(
                               'Report',
@@ -1113,13 +1263,17 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
                             ),
                             const Spacer(),
                             InkWell(
-                              onTap: _allBookings.isEmpty ? null : _exportPdf,
-                              borderRadius: BorderRadius.circular(18),
+                              onTap: _allBookings.isEmpty
+                                  ? null
+                                  : _exportPdf,
+                              borderRadius:
+                              BorderRadius.circular(18),
                               child: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(18),
+                                  borderRadius:
+                                  BorderRadius.circular(18),
                                   boxShadow: const [
                                     BoxShadow(
                                       color: Colors.black12,
@@ -1141,23 +1295,25 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
 
                         // Stats + Top Packages
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment:
+                          CrossAxisAlignment.start,
                           children: [
                             Column(
                               children: [
                                 _buildStatsCard(
                                   'Total Revenue',
-                                  _formatCurrency(totalRevenue),
+                                  _formatCurrency(filteredRevenue),
                                 ),
                                 const SizedBox(height: 16),
                                 _buildStatsCard(
                                   'Total Bookings',
-                                  totalBookings.toString(),
+                                  filteredBookingsCount.toString(),
                                 ),
                               ],
                             ),
                             const SizedBox(width: 24),
-                            _buildTopPackagesCard(),
+                            _buildTopPackagesCard(
+                                filteredPkgCounts, filteredTopPkgs),
                           ],
                         ),
 

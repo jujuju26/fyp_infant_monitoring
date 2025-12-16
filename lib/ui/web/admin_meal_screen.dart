@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_dashboard_screen.dart';
+import 'admin_inventory_screen.dart';
 import 'admin_staff_screen.dart';
 import 'admin_packages_screen.dart';
 import 'admin_report_screen.dart';
@@ -213,6 +214,7 @@ class _AdminMealScreenState extends State<AdminMealScreen>
       {'icon': Icons.people, 'label': 'Staff'},
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages'},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal'},
+      {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report'},
     ];
 
@@ -249,7 +251,6 @@ class _AdminMealScreenState extends State<AdminMealScreen>
               }).toList(),
             ),
           ),
-
           Divider(color: Colors.grey[300]),
           ListTile(
             leading: const Icon(Icons.power_settings_new, color: Colors.black54),
@@ -278,6 +279,12 @@ class _AdminMealScreenState extends State<AdminMealScreen>
             MaterialPageRoute(builder: (_) => const AdminPackagesScreen()));
         break;
       case 'Meal':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminMealScreen()));
+        break;
+      case 'Inventory':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
         break;
       case 'Report':
         Navigator.push(context,

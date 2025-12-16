@@ -37,7 +37,7 @@ class _InfantLiveMonitorScreenState extends State<InfantLiveMonitorScreen> {
   }
 
   Future<void> _startMJPEGStream() async {
-    const streamUrl = "http://172.20.10.4:8080/stream.mjpg";
+    const streamUrl = "http://172.20.10.5:8080/stream.mjpg";
 
     final request = http.Request("GET", Uri.parse(streamUrl));
     request.headers["Connection"] = "keep-alive";
@@ -221,26 +221,6 @@ class _InfantLiveMonitorScreenState extends State<InfantLiveMonitorScreen> {
 
             const SizedBox(height: 16),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _statusChip(
-                  label: "Cry status",
-                  value: "Calm",
-                  color: Colors.green,
-                ),
-                _statusChip(
-                  label: "Sleep position",
-                  value: "Safe",
-                  color: Colors.blue,
-                ),
-                _statusChip(
-                  label: "Last alert",
-                  value: "--",
-                  color: Colors.orange,
-                ),
-              ],
-            ),
           ],
         ),
       ),
