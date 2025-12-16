@@ -6,7 +6,8 @@ import '../logout_success_screen.dart';
 import 'staff_add_infant_screen.dart';
 import 'staff_edit_infant_screen.dart';
 import 'staff_notification_screen.dart';
-import 'staff_infant_monitor_screen.dart'; // <-- NEW
+import 'staff_infant_monitor_screen.dart';
+import 'staff_infant_milk_log_screen.dart';
 
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
@@ -122,7 +123,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
 
-                  // 👉 TAP TO OPEN LIVE MONITOR
+                  // TAP TO OPEN LIVE MONITOR
                   onTap: () {
                     setState(() {
                       selectedInfantId = infantId;
@@ -225,12 +226,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     );
   }
 }
-
-//
-// ───────────────────────────────────────────────────────────────
-//   DRAWER
-// ───────────────────────────────────────────────────────────────
-//
 
 class _StaffDrawer extends StatelessWidget {
   final String? selectedInfantId;
@@ -344,6 +339,26 @@ class _StaffDrawer extends StatelessWidget {
                   ),
                 );
               }
+            },
+          ),
+
+          // MILK LOG
+          ListTile(
+            leading: const Icon(Icons.local_drink, color: accent),
+            title: const Text(
+              'Milk Log',
+              style: TextStyle(fontFamily: 'Poppins'),
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StaffInfantMilkLogScreen(
+                    infantId: selectedInfantId,
+                    infantName: selectedInfantData?["name"],
+                  ),
+                ),
+              );
             },
           ),
 

@@ -9,6 +9,7 @@ import 'admin_packages_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_profile_screen.dart';
+import 'admin_bookings_screen.dart';
 
 class AdminStaffScreen extends StatefulWidget {
   @override
@@ -106,6 +107,7 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages'},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal'},
       {'icon': Icons.inventory_2_outlined, 'label': 'Inventory'},
+      {'icon': Icons.book_online, 'label': 'Bookings'},
       {'icon': Icons.insert_chart, 'label': 'Report'},
     ];
 
@@ -173,6 +175,10 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
         break;
       case 'Inventory':
         Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
+        break;
+      case 'Bookings':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminBookingsScreen()));
         break;
       case 'Report':
         Navigator.push(context,

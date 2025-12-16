@@ -6,6 +6,7 @@ import '../logout_success_screen.dart';
 import 'add_infant_screen.dart';
 import 'edit_infant_details_screen.dart';
 import 'infant_live_monitor_screen.dart';
+import 'parent_milk_log_screen.dart';
 
 class InfantMonitoringHome extends StatefulWidget {
   const InfantMonitoringHome({super.key});
@@ -254,6 +255,24 @@ class _AppDrawer extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AddInfantScreen()),
+              );
+            },
+          ),
+
+          // MILK LOG (View Only)
+          ListTile(
+            leading: const Icon(Icons.local_drink, color: accent),
+            title: const Text('Milk Feeding Log',
+                style: TextStyle(fontFamily: 'Poppins')),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ParentMilkLogScreen(
+                    infantId: selectedInfantId,
+                    infantName: selectedInfantData?["name"],
+                  ),
+                ),
               );
             },
           ),

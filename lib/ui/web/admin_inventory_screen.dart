@@ -8,6 +8,7 @@ import 'admin_packages_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_staff_screen.dart';
+import 'admin_bookings_screen.dart';
 
 class AdminInventoryScreen extends StatefulWidget {
   const AdminInventoryScreen({super.key});
@@ -532,6 +533,7 @@ class _AdminInventoryScreenState extends State<AdminInventoryScreen> {
         'label': 'Inventory',
         'selected': true
       },
+      {'icon': Icons.book_online, 'label': 'Bookings', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
@@ -607,6 +609,10 @@ class _AdminInventoryScreenState extends State<AdminInventoryScreen> {
       case 'Inventory':
         Navigator.push(context,
             MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
+        break;
+      case 'Bookings':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminBookingsScreen()));
         break;
       case 'Report':
         Navigator.push(context,

@@ -118,7 +118,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
         'paymentMethod': _paymentMethod,
         'totalPayable': _totalPayable,
-        'status': 'pending',
+        'status': 'PENDING',
         'timestamp': FieldValue.serverTimestamp(),
       };
 

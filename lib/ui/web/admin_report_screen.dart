@@ -14,6 +14,7 @@ import 'admin_meal_screen.dart';
 import 'admin_packages_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_staff_screen.dart';
+import 'admin_bookings_screen.dart';
 
 class BookingInfo {
   final String id;
@@ -685,6 +686,7 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': false},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false,},
       {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
+      {'icon': Icons.book_online, 'label': 'Bookings', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': true},
     ];
 
@@ -775,6 +777,9 @@ class _AdminReportScreenState extends State<AdminReportScreen> {
         break;
       case 'Inventory':
         Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
+        break;
+      case 'Bookings':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminBookingsScreen()));
         break;
       case 'Report':
         Navigator.push(

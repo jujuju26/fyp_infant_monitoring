@@ -12,6 +12,7 @@ import 'admin_meal_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_staff_screen.dart';
+import 'admin_bookings_screen.dart';
 
 class AdminPackagesScreen extends StatefulWidget {
   const AdminPackagesScreen({Key? key}) : super(key: key);
@@ -82,6 +83,9 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
         break;
       case 'Inventory':
         Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminInventoryScreen()));
+        break;
+      case 'Bookings':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminBookingsScreen()));
         break;
       case 'Report':
         Navigator.push(
@@ -538,6 +542,7 @@ class _AdminPackagesScreenState extends State<AdminPackagesScreen> {
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages', 'selected': true,},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal', 'selected': false,},
       {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
+      {'icon': Icons.book_online, 'label': 'Bookings', 'selected': false},
       {'icon': Icons.insert_chart, 'label': 'Report', 'selected': false},
     ];
 
