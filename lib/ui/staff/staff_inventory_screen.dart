@@ -21,13 +21,14 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
     _loadInventory();
   }
 
-  // ----------------------------------------------------------
-  // LOAD INVENTORY (NULL SAFE)
-  // ----------------------------------------------------------
+  /* ================= LOAD INVENTORY ================= */
+
   Future<void> _loadInventory() async {
     setState(() => _isLoading = true);
 
-    final snap = await FirebaseFirestore.instance.collection("inventory").get();
+    final snap = await FirebaseFirestore.instance
+        .collection("inventory")
+        .get();
 
     items = snap.docs.map((doc) {
       final d = doc.data();
@@ -44,9 +45,8 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
     setState(() => _isLoading = false);
   }
 
-  // ----------------------------------------------------------
-  // STAFF USE / DEDUCT ITEM
-  // ----------------------------------------------------------
+  /* ================= USE / DEDUCT ================= */
+
   Future<void> _deductItem(String itemId, int currentQty) async {
     int usedQty = 0;
 
@@ -75,8 +75,9 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
                       child: TextField(
                         textAlign: TextAlign.center,
                         keyboardType: TextInputType.number,
-                        controller:
-                        TextEditingController(text: usedQty.toString()),
+                        controller: TextEditingController(
+                          text: usedQty.toString(),
+                        ),
                         onChanged: (v) {
                           final parsed = int.tryParse(v);
                           if (parsed != null && parsed >= 0) {
@@ -106,9 +107,9 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
 
                   final newQty =
                   (currentQty - usedQty).clamp(0, 999999);
+
                   final staff = FirebaseAuth.instance.currentUser;
 
-                  // Update inventory quantity
                   await FirebaseFirestore.instance
                       .collection("inventory")
                       .doc(itemId)
@@ -117,7 +118,6 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
                     "updatedAt": FieldValue.serverTimestamp(),
                   });
 
-                  // Log usage
                   await FirebaseFirestore.instance
                       .collection("inventory")
                       .doc(itemId)
@@ -131,8 +131,10 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
                   Navigator.pop(context);
                   _loadInventory();
                 },
-                child:
-                const Text("Confirm", style: TextStyle(color: Colors.white)),
+                child: const Text(
+                  "Confirm",
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
             ],
           );
@@ -141,9 +143,8 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
     );
   }
 
-  // ----------------------------------------------------------
-  // UI
-  // ----------------------------------------------------------
+  /* ================= UI ================= */
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,7 +170,7 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
         itemCount: items.length,
         itemBuilder: (context, index) {
           final item = items[index];
-          final bool lowStock =
+          final lowStock =
               item["currentQty"] <= item["minQty"];
 
           return Card(
@@ -190,9 +191,8 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
                 "${item["category"]}\n"
                     "Qty: ${item["currentQty"]} ${item["unit"]}",
                 style: TextStyle(
-                  color: lowStock
-                      ? Colors.red
-                      : Colors.black54,
+                  color:
+                  lowStock ? Colors.red : Colors.black54,
                   fontFamily: "Poppins",
                 ),
               ),
@@ -202,7 +202,9 @@ class _StaffInventoryScreenState extends State<StaffInventoryScreen> {
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () => _deductItem(
-                    item["id"], item["currentQty"]),
+                  item["id"],
+                  item["currentQty"],
+                ),
                 child: const Text("Use"),
               ),
             ),
