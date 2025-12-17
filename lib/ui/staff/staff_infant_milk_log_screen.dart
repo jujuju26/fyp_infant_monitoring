@@ -539,11 +539,13 @@ class _StaffInfantMilkLogScreenState extends State<StaffInfantMilkLogScreen> {
               children: [
                 Icon(Icons.local_drink, color: accent),
                 const SizedBox(width: 8),
-                const Text(
-                  "Record Milk Feeding",
-                  style: TextStyle(
-                    fontFamily: "Poppins",
-                    fontWeight: FontWeight.w600,
+                const Expanded(
+                  child: Text(
+                    "Record Milk Feeding",
+                    style: TextStyle(
+                      fontFamily: "Poppins",
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -553,98 +555,108 @@ class _StaffInfantMilkLogScreenState extends State<StaffInfantMilkLogScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Amount
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Amount (ml)",
-                      prefixIcon: Icon(Icons.straighten),
-                      border: OutlineInputBorder(),
-                    ),
-                    style: const TextStyle(fontFamily: "Poppins"),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Milk Type
-                  DropdownButtonFormField<String>(
-                    value: selectedMilkType,
-                    decoration: const InputDecoration(
-                      labelText: "Milk Type",
-                      prefixIcon: Icon(Icons.category),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: ['Formula', 'Breast Milk', 'Mixed'].map((type) {
-                      return DropdownMenuItem(
-                        value: type,
-                        child: Text(type, style: const TextStyle(fontFamily: "Poppins")),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setDialogState(() => selectedMilkType = value!);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Date & Time
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.calendar_today),
-                    title: const Text(
-                      "Date & Time",
-                      style: TextStyle(fontFamily: "Poppins"),
-                    ),
-                    subtitle: Text(
-                      "${selectedDateTime.day}/${selectedDateTime.month}/${selectedDateTime.year} ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}",
+                    // Amount
+                    TextField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: "Amount (ml)",
+                        prefixIcon: const Icon(Icons.straighten),
+                        suffixText: "ml",
+                        suffixStyle: TextStyle(
+                          fontFamily: "Poppins",
+                          color: Colors.grey[600],
+                        ),
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 16,
+                        ),
+                      ),
                       style: const TextStyle(fontFamily: "Poppins"),
                     ),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () async {
-                      final date = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDateTime,
-                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                        lastDate: DateTime.now(),
-                      );
-                      if (date != null) {
-                        final time = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.fromDateTime(selectedDateTime),
-                        );
-                        if (time != null) {
-                          setDialogState(() {
-                            selectedDateTime = DateTime(
-                              date.year,
-                              date.month,
-                              date.day,
-                              time.hour,
-                              time.minute,
-                            );
-                          });
-                        }
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Notes
-                  TextField(
-                    controller: notesController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: "Notes (optional)",
-                      prefixIcon: Icon(Icons.note),
-                      border: OutlineInputBorder(),
-                    ),
-                    style: const TextStyle(fontFamily: "Poppins"),
-                  ),
-
-                  if (isLoading) ...[
                     const SizedBox(height: 16),
-                    const Center(child: CircularProgressIndicator()),
+
+                    // Milk Type
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedMilkType,
+                      decoration: const InputDecoration(
+                        labelText: "Milk Type",
+                        prefixIcon: Icon(Icons.category),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: ['Formula', 'Breast Milk', 'Mixed'].map((type) {
+                        return DropdownMenuItem(
+                          value: type,
+                          child: Text(type, style: const TextStyle(fontFamily: "Poppins")),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() => selectedMilkType = value!);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Date & Time
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.calendar_today),
+                      title: const Text(
+                        "Date & Time",
+                        style: TextStyle(fontFamily: "Poppins"),
+                      ),
+                      subtitle: Text(
+                        "${selectedDateTime.day}/${selectedDateTime.month}/${selectedDateTime.year} ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}",
+                        style: const TextStyle(fontFamily: "Poppins"),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () async {
+                        if (!context.mounted) return;
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDateTime,
+                          firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                          lastDate: DateTime.now(),
+                        );
+                        if (date != null && context.mounted) {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(selectedDateTime),
+                          );
+                          if (time != null) {
+                            setDialogState(() {
+                              selectedDateTime = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                                time.hour,
+                                time.minute,
+                              );
+                            });
+                          }
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Notes
+                    TextField(
+                      controller: notesController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: "Notes (optional)",
+                        prefixIcon: Icon(Icons.note),
+                        border: OutlineInputBorder(),
+                      ),
+                      style: const TextStyle(fontFamily: "Poppins"),
+                    ),
+
+                    if (isLoading) ...[
+                      const SizedBox(height: 16),
+                      const Center(child: CircularProgressIndicator()),
+                    ],
                   ],
-                ],
-              ),
+                ),
             ),
             actions: [
               TextButton(
