@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'staff_inventory_screen.dart';
+import 'staff_schedule_screen.dart';
 
 class StaffMealScreen extends StatefulWidget {
   const StaffMealScreen({Key? key}) : super(key: key);
@@ -134,10 +135,27 @@ class _StaffMealScreenState extends State<StaffMealScreen> {
                   style: TextStyle(fontFamily: 'Poppins'),
                 ),
                 onTap: () {
+                  Navigator.pop(context); // Close drawer first
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => const StaffInventoryScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.schedule, color: accent),
+                title: const Text(
+                  'Schedule',
+                  style: TextStyle(fontFamily: 'Poppins'),
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StaffScheduleScreen(),
                     ),
                   );
                 },
