@@ -9,6 +9,7 @@ import 'admin_profile_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_staff_screen.dart';
 import 'admin_bookings_screen.dart';
+import 'admin_scheduling_screen.dart';
 
 class AdminInventoryScreen extends StatefulWidget {
   const AdminInventoryScreen({super.key});
@@ -522,6 +523,7 @@ class _AdminInventoryScreenState extends State<AdminInventoryScreen> {
     List<Map<String, dynamic>> sidebarItems = [
       {'icon': Icons.dashboard, 'label': 'Dashboard', 'selected': false},
       {'icon': Icons.people, 'label': 'Staff', 'selected': false},
+      {'icon': Icons.schedule, 'label': 'Scheduling', 'selected': false},
       {
         'icon': Icons.shopping_bag_outlined,
         'label': 'Packages',
@@ -597,6 +599,10 @@ class _AdminInventoryScreenState extends State<AdminInventoryScreen> {
       case 'Staff':
         Navigator.push(
             context, MaterialPageRoute(builder: (_) => AdminStaffScreen()));
+        break;
+      case 'Scheduling':
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const AdminSchedulingScreen()));
         break;
       case 'Packages':
         Navigator.push(context,

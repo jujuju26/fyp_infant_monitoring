@@ -10,6 +10,7 @@ import 'admin_report_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_bookings_screen.dart';
+import 'admin_scheduling_screen.dart';
 
 class AdminStaffScreen extends StatefulWidget {
   @override
@@ -104,6 +105,7 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
     List<Map<String, dynamic>> items = [
       {'icon': Icons.dashboard, 'label': 'Dashboard'},
       {'icon': Icons.people, 'label': 'Staff'},
+      {'icon': Icons.schedule, 'label': 'Scheduling'},
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages'},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal'},
       {'icon': Icons.inventory_2_outlined, 'label': 'Inventory'},
@@ -164,6 +166,10 @@ class _AdminStaffScreenState extends State<AdminStaffScreen> {
             MaterialPageRoute(builder: (_) => const AdminDashboardScreen()));
         break;
       case 'Staff':
+        break;
+      case 'Scheduling':
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminSchedulingScreen()));
         break;
       case 'Packages':
         Navigator.push(context,

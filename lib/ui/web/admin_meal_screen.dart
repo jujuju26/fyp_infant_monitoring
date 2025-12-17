@@ -10,6 +10,7 @@ import 'admin_report_screen.dart';
 import 'admin_logout_screen.dart';
 import 'admin_profile_screen.dart';
 import 'admin_bookings_screen.dart';
+import 'admin_scheduling_screen.dart';
 
 class AdminMealScreen extends StatefulWidget {
   const AdminMealScreen({Key? key}) : super(key: key);
@@ -213,6 +214,7 @@ class _AdminMealScreenState extends State<AdminMealScreen>
     List<Map<String, dynamic>> items = [
       {'icon': Icons.dashboard, 'label': 'Dashboard'},
       {'icon': Icons.people, 'label': 'Staff'},
+      {'icon': Icons.schedule, 'label': 'Scheduling'},
       {'icon': Icons.shopping_bag_outlined, 'label': 'Packages'},
       {'icon': Icons.set_meal_outlined, 'label': 'Meal'},
       {'icon': Icons.inventory_2_outlined, 'label': 'Inventory', 'selected': false},
@@ -275,6 +277,10 @@ class _AdminMealScreenState extends State<AdminMealScreen>
       case 'Staff':
         Navigator.push(
             context, MaterialPageRoute(builder: (_) => AdminStaffScreen()));
+        break;
+      case 'Scheduling':
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const AdminSchedulingScreen()));
         break;
       case 'Packages':
         Navigator.push(context,
